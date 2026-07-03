@@ -10,6 +10,7 @@
     "flathub/**/*.ts",
     "playwright.config.ts",
     "electron.vite.config.ts",
+    "vite.renderer.config.ts",
     "meta/**/*.ts",
     "eslint.config.mjs"
   ],

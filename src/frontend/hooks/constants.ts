@@ -14,7 +14,6 @@ export function getStatusLabel({
   status,
   statusContext,
   t,
-  runner,
   size,
   percent
 }: StatusArgs): string {
@@ -32,12 +31,9 @@ export function getStatusLabel({
     'syncing-saves': t('gamepage:status.syncingSaves', 'Syncing Saves'),
     moving: t('gamepage:gamecard.moving', 'Moving'),
     repairing: t('gamepage:gamecard.repairing', 'Repairing'),
-    installed: `${t('gamepage:status.installed')} ${
-      runner === 'sideload' ? '' : size
-    }`,
+    installed: `${t('gamepage:status.installed')} ${size ?? ''}`,
     notInstalled: t('gamepage:status.notinstalled'),
     launching: t('gamepage:status.launching', 'Launching'),
-    winetricks: t('gamepage:status.winetricks', 'Applying Winetricks fixes'),
     redist: t(
       'gamepage:status.redist',
       'Installing Redistributables ({{redist}})',

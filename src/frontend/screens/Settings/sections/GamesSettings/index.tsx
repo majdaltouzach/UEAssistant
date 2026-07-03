@@ -1,112 +1,40 @@
 import './index.scss'
 
-import React, { useContext, useEffect, useState } from 'react'
+import React, { useContext, useState } from 'react'
 
 import { useTranslation } from 'react-i18next'
 import {
-  AdvertiseAvxForRosetta,
   AlternativeExe,
-  AutoDXVK,
-  AutoDXVKNVAPI,
-  AutoVKD3D,
-  BattlEyeRuntime,
-  CrossoverBottle,
-  EacRuntime,
-  EnableEsync,
-  EnableFSR,
-  EnableFsync,
-  EnableMsync,
-  EnableWineWayland,
-  EnableWoW64,
   EnvVariablesTable,
-  GameMode,
+  IgnoreGameUpdates,
   LauncherArgs,
   LaunchOptionSelector,
-  Mangohud,
   OfflineMode,
   PreferedLanguage,
-  PreferSystemLibs,
-  ShowFPS,
-  SteamRuntime,
-  WinePrefix,
-  WineVersionSelector,
   WrappersTable,
-  EnableDXVKFpsLimit,
-  IgnoreGameUpdates,
-  Gamescope,
   BeforeLaunchScriptPath,
-  AfterLaunchScriptPath,
-  NvidiaPrime
+  AfterLaunchScriptPath
 } from '../../components'
 import { TabPanel } from 'frontend/components/UI'
-import ContextProvider from 'frontend/state/ContextProvider'
-import Tools from '../../components/Tools'
 import SettingsContext from '../../SettingsContext'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faInfoCircle } from '@fortawesome/free-solid-svg-icons'
-import useSetting from 'frontend/hooks/useSetting'
-import { defaultWineVersion } from '../..'
 import SyncSaves from '../SyncSaves'
 import FooterInfo from '../FooterInfo'
 import { Tabs, Tab } from '@mui/material'
-import { GameInfo } from 'common/types'
-import DisableUMU from '../../components/DisableUMU'
 import VerboseLogs from '../../components/VerboseLogs'
-
-const windowsPlatforms = ['Win32', 'Windows', 'windows']
-function getStartingTab(platform: string, gameInfo?: GameInfo | null): string {
-  if (!gameInfo) {
-    if (platform !== 'win32') {
-      return 'wine'
-    }
-    return 'advanced'
-  }
-  if (platform === 'win32') {
-    return 'advanced'
-  } else if (windowsPlatforms.includes(gameInfo?.install.platform || '')) {
-    return 'wine'
-  } else if (platform === 'darwin') {
-    return 'advanced'
-  } else {
-    return 'other'
-  }
-}
 
 export default function GamesSettings() {
   const { t } = useTranslation()
-  const { platform } = useContext(ContextProvider)
   const { isDefault, gameInfo } = useContext(SettingsContext)
-  const [wineVersion] = useSetting('wineVersion', defaultWineVersion)
-  const [isNative, setIsNative] = useState(false)
-  const isLinux = platform === 'linux'
-  const isWin = platform === 'win32'
-  const isMac = platform === 'darwin'
-  const isCrossover = wineVersion?.type === 'crossover'
-  const showCloudSavesTab =
-    gameInfo?.runner === 'gog' || gameInfo?.runner === 'legendary'
-  const isBrowserGame = gameInfo?.install.platform === 'Browser'
-  const isSideloaded = gameInfo?.runner === 'sideload'
 
-  function shouldShowSettings(tab: 'wine' | 'other'): boolean {
-    if (tab === 'wine') {
-      if (isWin || isNative || isBrowserGame) {
-        return false
-      }
-      return true
-    }
+  const showCloudSavesTab = gameInfo?.runner === 'legendary'
 
-    // Other tab show on linux and mac (if not native)
-    if (isLinux || (isMac && !isNative)) {
-      return true
-    }
-    return false
-  }
   // Get the latest used tab index for the current game
   const localStorageKey = gameInfo
     ? `${gameInfo.app_name}-setting_tab`
     : 'default'
-  const latestTabIndex =
-    localStorage.getItem(localStorageKey) || getStartingTab(platform, gameInfo)
+  const latestTabIndex = localStorage.getItem(localStorageKey) || 'advanced'
   const [value, setValue] = useState(latestTabIndex)
 
   const handleChange = (
@@ -117,22 +45,6 @@ export default function GamesSettings() {
     // Store the latest used tab index for the current game
     localStorage.setItem(localStorageKey, newValue.toString())
   }
-
-  useEffect(() => {
-    if (gameInfo) {
-      const getIsNative = async () => {
-        const isNative = await window.api.isNative({
-          appName: gameInfo?.app_name,
-          runner: gameInfo?.runner
-        })
-        setIsNative(isNative)
-      }
-      void getIsNative()
-    }
-  }, [gameInfo])
-
-  const showOtherTab = shouldShowSettings('other')
-  const showWineTab = shouldShowSettings('wine')
 
   return (
     <>
@@ -152,10 +64,6 @@ export default function GamesSettings() {
         aria-label="settings tabs"
         variant="scrollable"
       >
-        {showWineTab && <Tab label="Wine" value="wine" />}
-        {showOtherTab && (
-          <Tab label={t('settings.navbar.other', 'Other')} value="other" />
-        )}
         <Tab
           label={t('settings.navbar.advanced', 'Advanced')}
           value="advanced"
@@ -167,65 +75,11 @@ export default function GamesSettings() {
             value="saves"
           />
         )}
-        {isLinux && (
-          <Tab
-            label={t('settings.navbar.gamescope', 'Gamescope')}
-            value="gamescope"
-          />
-        )}
-        {isLinux && !isNative && (
-          <Tab label={t('settings.navbar.legacy', 'Legacy')} value="legacy" />
-        )}
       </Tabs>
 
-      <TabPanel value={value} index={'wine'}>
-        <WineVersionSelector />
-        <WinePrefix />
-        <CrossoverBottle />
-        {!isCrossover && (
-          <>
-            <AutoDXVK />
-            {isLinux && (
-              <>
-                {!window.isSteamDeck && <AutoDXVKNVAPI />}
-                <AutoVKD3D />
-              </>
-            )}
-            <EnableEsync />
-            <EnableFsync />
-            <EnableWineWayland />
-            <EnableWoW64 />
-            <EnableMsync />
-            <AdvertiseAvxForRosetta />
-            <EnableFSR />
-            {isMac && <EnableDXVKFpsLimit />}
-            <Tools />
-          </>
-        )}
-      </TabPanel>
-
-      <TabPanel value={value} index={'other'}>
-        {!isNative && <ShowFPS />}
-        <Mangohud />
-        <GameMode />
-        {isLinux && <PreferSystemLibs />}
-        <SteamRuntime />
-        <NvidiaPrime />
-        {!isNative && (
-          <>
-            <BattlEyeRuntime />
-            <EacRuntime />
-          </>
-        )}
-      </TabPanel>
-
       <TabPanel value={value} index={'advanced'}>
-        {!isSideloaded && (
-          <>
-            <IgnoreGameUpdates />
-            <OfflineMode />
-          </>
-        )}
+        <IgnoreGameUpdates />
+        <OfflineMode />
         <VerboseLogs />
         <AlternativeExe />
         <LaunchOptionSelector />
@@ -237,30 +91,12 @@ export default function GamesSettings() {
         </div>
         <WrappersTable />
         <EnvVariablesTable />
-        {!isSideloaded && <PreferedLanguage />}
+        <PreferedLanguage />
       </TabPanel>
 
       <TabPanel value={value} index={'saves'}>
         <SyncSaves />
       </TabPanel>
-
-      <TabPanel value={value} index={'gamescope'}>
-        <Gamescope />
-      </TabPanel>
-
-      {isLinux && (
-        <TabPanel value={value} index={'legacy'}>
-          <span className="defaults-hint">
-            <FontAwesomeIcon icon={faInfoCircle} />
-            {t(
-              'settings.legacy_warning',
-              'Warning: The settings on this tab are mostly deprecated and might not work at all.'
-            )}
-          </span>
-          <EnableDXVKFpsLimit />
-          <DisableUMU />
-        </TabPanel>
-      )}
 
       {!isDefault && <FooterInfo />}
     </>

@@ -1,0 +1,19 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capabilities for the main UEAssistant window (own app content only)",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "allow-list-ue-versions",
+    "allow-list-available-ue-linux-builds",
+    "allow-epic-login",
+    "allow-epic-logout",
+    "allow-epic-user-info",
+    "allow-open-epic-login-window",
+    "allow-install-ue",
+    "allow-update-ue",
+    "allow-uninstall-ue",
+    "allow-list-installed-engines"
+  ]
+}

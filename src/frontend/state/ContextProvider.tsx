@@ -8,31 +8,7 @@ const initialContext: ContextType = {
     login: async () => Promise.resolve(''),
     logout: async () => Promise.resolve()
   },
-  gog: {
-    library: [],
-    login: async () => Promise.resolve(''),
-    logout: async () => Promise.resolve()
-  },
-  amazon: {
-    library: [],
-    getLoginData: async () =>
-      Promise.resolve({
-        client_id: '',
-        code_verifier: '',
-        serial: '',
-        url: ''
-      }),
-    login: async () => Promise.resolve(''),
-    logout: async () => Promise.resolve()
-  },
-  zoom: {
-    library: [],
-    login: async () => Promise.resolve(''),
-    logout: async () => Promise.resolve(),
-    enabled: false
-  },
   installingEpicGame: false,
-  sideloadedLibrary: [],
   error: false,
   gameUpdates: [],
   libraryStatus: [],
@@ -99,9 +75,7 @@ const initialContext: ContextType = {
     removeHelpItem: () => null
   },
   experimentalFeatures: {
-    enableHelp: false,
-    cometSupport: true,
-    zoomPlatform: false
+    enableHelp: false
   },
   handleExperimentalFeatures: () => null,
   disableDialogBackdropClose: false,

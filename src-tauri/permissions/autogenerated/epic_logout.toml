@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-epic-logout"
+description = "Enables the epic_logout command without any pre-configured scope."
+commands.allow = ["epic_logout"]
+
+[[permission]]
+identifier = "deny-epic-logout"
+description = "Denies the epic_logout command without any pre-configured scope."
+commands.deny = ["epic_logout"]

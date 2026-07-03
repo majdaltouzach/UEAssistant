@@ -5,10 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 
 import EpicLogo from 'frontend/assets/epic-logo.svg?react'
-import GOGLogo from 'frontend/assets/gog-logo.svg?react'
 import HeroicLogo from 'frontend/assets/heroic-icon.svg?react'
-import AmazonLogo from 'frontend/assets/amazon-logo.svg?react'
-import ZoomLogo from 'frontend/assets/zoom-logo.svg?react'
 
 import { LanguageSelector, UpdateComponent } from '../../components/UI'
 import { FlagPosition } from '../../components/UI/LanguageSelector'
@@ -18,13 +15,9 @@ import { useAwaited } from '../../hooks/useAwaited'
 import { hasHelp } from 'frontend/hooks/hasHelp'
 
 export const epicLoginPath = '/loginweb/legendary'
-export const gogLoginPath = '/loginweb/gog'
-export const amazonLoginPath = '/loginweb/nile'
-export const zoomLoginPath = '/loginweb/zoom'
 
 export default React.memo(function NewLogin() {
-  const { epic, gog, amazon, zoom, refreshLibrary } =
-    useContext(ContextProvider)
+  const { epic, refreshLibrary } = useContext(ContextProvider)
   const { t } = useTranslation()
 
   hasHelp(
@@ -37,11 +30,6 @@ export default React.memo(function NewLogin() {
   const [loading, setLoading] = useState(true)
   const [showSidLogin, setShowSidLogin] = useState(false)
   const [isEpicLoggedIn, setIsEpicLoggedIn] = useState(Boolean(epic.username))
-  const [isGogLoggedIn, setIsGogLoggedIn] = useState(Boolean(gog.username))
-  const [isAmazonLoggedIn, setIsAmazonLoggedIn] = useState(
-    Boolean(amazon.user_id)
-  )
-  const [isZoomLoggedIn, setIsZoomLoggedIn] = useState(Boolean(zoom.username))
 
   const systemInfo = useAwaited(window.api.systemInfo.get)
 
@@ -61,19 +49,16 @@ export default React.memo(function NewLogin() {
 
   const loginMessage = t(
     'login.message',
-    'Login with your platform. You can login to more than one platform at the same time.'
+    'Login with your Epic Games account to access Unreal Engine.'
   )
 
   useEffect(() => {
     setLoading(false)
-  }, [epic, gog])
+  }, [epic])
 
   useEffect(() => {
     setIsEpicLoggedIn(Boolean(epic.username))
-    setIsGogLoggedIn(Boolean(gog.username))
-    setIsAmazonLoggedIn(Boolean(amazon.user_id))
-    setIsZoomLoggedIn(Boolean(zoom.username))
-  }, [epic.username, gog.username, amazon.user_id, zoom.username, t])
+  }, [epic.username, t])
 
   async function handleLibraryClick() {
     await refreshLibrary({ runInBackground: false })
@@ -100,8 +85,8 @@ export default React.memo(function NewLogin() {
           <div className="runnerHeader">
             <HeroicLogo className="runnerHeaderIcon" />
             <div className="runnerHeaderText">
-              <h1 className="title">Heroic</h1>
-              <h2 className="subtitle">Games Launcher</h2>
+              <h1 className="title">UEAssistant</h1>
+              <h2 className="subtitle">Unreal Engine Installer</h2>
             </div>
 
             {!loading && (
@@ -129,38 +114,6 @@ export default React.memo(function NewLogin() {
               }}
               disabled={oldMac}
             />
-            <Runner
-              class="gog"
-              buttonText={t('login.gog', 'GOG Login')}
-              icon={() => <GOGLogo />}
-              loginUrl={gogLoginPath}
-              isLoggedIn={isGogLoggedIn}
-              user={gog.username}
-              logoutAction={gog.logout}
-              disabled={oldMac}
-            />
-            <Runner
-              class="nile"
-              buttonText={t('login.amazon', 'Amazon Login')}
-              icon={() => <AmazonLogo />}
-              loginUrl={amazonLoginPath}
-              isLoggedIn={isAmazonLoggedIn}
-              user={amazon.username || 'Unknown'}
-              logoutAction={amazon.logout}
-              disabled={oldMac}
-            />
-            {zoom.enabled && (
-              <Runner
-                class="zoom"
-                buttonText={t('login.zoom', 'Zoom Login')}
-                icon={() => <ZoomLogo />}
-                loginUrl={zoomLoginPath}
-                isLoggedIn={isZoomLoggedIn}
-                user={zoom.username}
-                logoutAction={zoom.logout}
-                disabled={oldMac}
-              />
-            )}
           </div>
         </div>
         <button

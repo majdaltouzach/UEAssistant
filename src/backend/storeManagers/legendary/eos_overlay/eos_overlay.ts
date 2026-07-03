@@ -12,9 +12,6 @@ import { ValidWinePrefix } from '../commands/base'
 import { Path } from 'backend/schemas'
 import { toolsPath } from 'backend/constants/paths'
 import { legendaryConfigPath } from '../constants'
-import { isLinux } from 'backend/constants/environment'
-
-import type { Runner } from 'common/types'
 
 const currentVersionPath = () =>
   join(legendaryConfigPath, 'overlay_version.json')
@@ -182,9 +179,10 @@ async function remove(): Promise<boolean> {
   return true
 }
 
-async function enable(
-  appName: string
-): Promise<{ wasEnabled: boolean; installNow?: boolean }> {
+async function enable(): Promise<{
+  wasEnabled: boolean
+  installNow?: boolean
+}> {
   if (!isInstalled()) {
     const { response } = await dialog.showMessageBox({
       title: t('setting.eosOverlay.notInstalledTitle', 'Overlay not installed'),
@@ -198,7 +196,7 @@ async function enable(
     return { wasEnabled: false, installNow: response === 0 }
   }
 
-  const prefix = await getWinePrefixFolder(appName)
+  const prefix = await getWinePrefixFolder()
   // Can't install the overlay if we don't have a valid prefix
   // FIXME: Notify the user about this
   if (prefix === false) return { wasEnabled: false }
@@ -217,8 +215,8 @@ async function enable(
   return { wasEnabled: true }
 }
 
-async function disable(appName: string) {
-  const prefix = await getWinePrefixFolder(appName)
+async function disable() {
+  const prefix = await getWinePrefixFolder()
   // If we don't have a valid prefix anymore, we have nothing to disable
   if (prefix === false) return
 
@@ -239,14 +237,13 @@ function isInstalled() {
 }
 
 /**
- * Checks if the EOS Overlay is enabled (either for a specific game on Linux or globally on Windows)
- * @param appName required on Linux, does nothing on Windows
+ * Checks if the EOS Overlay is enabled
  * @returns Enabled = True; Disabled = False
  */
-async function isEnabled(appName?: string): Promise<boolean> {
+async function isEnabled(): Promise<boolean> {
   let enabled = false
 
-  const prefix = await getWinePrefixFolder(appName)
+  const prefix = await getWinePrefixFolder()
   if (prefix === false) return false
 
   const command: LegendaryCommand = {
@@ -269,24 +266,12 @@ async function isEnabled(appName?: string): Promise<boolean> {
 }
 
 /**
- * Returns the path to the "real" Wineprefix folder (where "drive_c" and "user.reg" is) for a game
- * @returns null if a prefix can't be returned (we're not on Linux / don't have an AppName)
- * @returns false if parsing the prefix path failed (in other words there is a prefix path set, but it doesn't contain a valid prefix)
- * @returns ValidWinePrefix (a folder that is verified to contain a Wineprefix) otherwise
+ * UEAssistant only launches native Linux binaries, so there is no Wine
+ * prefix to resolve. Kept as a no-op so the EOS overlay enable/disable/status
+ * commands below (which optionally pass a `--prefix`) keep working.
  */
-async function getWinePrefixFolder(
-  appName?: string,
-  runner: Runner = 'legendary'
-): Promise<ValidWinePrefix | null | false> {
-  if (!isLinux || !appName) return null
-
-  const { winePrefix, wineVersion } = await libraryManagerMap[runner]
-    .getGame(appName)
-    .getSettings()
-  const prefixPath =
-    wineVersion.type === 'proton' ? join(winePrefix, 'pfx') : winePrefix
-  const maybePrefix = ValidWinePrefix.safeParse(prefixPath)
-  return maybePrefix.success ? maybePrefix.data : false
+async function getWinePrefixFolder(): Promise<ValidWinePrefix | null | false> {
+  return null
 }
 
 export {

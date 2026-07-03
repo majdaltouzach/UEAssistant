@@ -1,0 +1,27 @@
+[package]
+name = "ueassistant"
+version = "0.1.0"
+description = "UEAssistant — Linux-native Unreal Engine installer/updater"
+edition = "2021"
+
+[lib]
+name = "ueassistant_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "6.0.0"
+reqwest = { version = "0.12", default-features = false, features = ["stream", "rustls-tls"] }
+tokio = { version = "1", features = ["fs", "io-util", "rt", "sync", "macros"] }
+futures-util = "0.3"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+regex = "1"
+
+[[bin]]
+name = "ueassistant"
+path = "src/main.rs"

@@ -18,7 +18,6 @@ import { GameInfo } from 'common/types'
 import { getIcon } from '../utils'
 import { addNonSteamGame } from '../nonesteamgame/nonesteamgame'
 import sanitize from 'sanitize-filename'
-import { libraryManagerMap } from 'backend/storeManagers'
 import { isMac } from 'backend/constants/environment'
 import { userHome } from 'backend/constants/paths'
 import type { Game } from 'common/types/game_manager'
@@ -79,10 +78,7 @@ Categories=Game;
       const shortcutOptions: Electron.ShortcutDetails = {
         target: launchWithProtocol
       }
-      let executable = gameInfo.install.executable
-      if (gameInfo.runner === 'gog') {
-        executable = libraryManagerMap['gog'].getExecutable(gameInfo.app_name)
-      }
+      const executable = gameInfo.install.executable
       if (executable) {
         let icon: string
         if (

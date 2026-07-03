@@ -118,57 +118,9 @@ const libraryStore = new CacheStore<GameInfo[], 'library'>(
   null
 )
 
-const wineDownloaderInfoStore = new TypeCheckedStoreFrontend(
-  'wineDownloaderInfoStore',
-  {
-    cwd: 'store',
-    name: 'wine-downloader-info'
-  }
-)
-
-const gogLibraryStore = new CacheStore<GameInfo[], 'games'>('gog_library', null)
-const gogInstalledGamesStore = new TypeCheckedStoreFrontend(
-  'gogInstalledGamesStore',
-  {
-    cwd: 'gog_store',
-    name: 'installed'
-  }
-)
-const gogConfigStore = new TypeCheckedStoreFrontend('gogConfigStore', {
-  cwd: 'gog_store'
-})
-
-const zoomLibraryStore = new CacheStore<GameInfo[], 'games'>(
-  'zoom_library',
-  null
-)
-const zoomInstalledGamesStore = new TypeCheckedStoreFrontend(
-  'zoomInstalledGamesStore',
-  {
-    cwd: 'zoom_store',
-    name: 'installed'
-  }
-)
-const zoomConfigStore = new TypeCheckedStoreFrontend('zoomConfigStore', {
-  cwd: 'zoom_store'
-})
-
-const nileLibraryStore = new CacheStore<GameInfo[], 'library'>(
-  'nile_library',
-  null
-)
-const nileConfigStore = new TypeCheckedStoreFrontend('nileConfigStore', {
-  cwd: 'nile_store'
-})
-
 const timestampStore = new TypeCheckedStoreFrontend('timestampStore', {
   cwd: 'store',
   name: 'timestamp'
-})
-
-const sideloadLibrary = new TypeCheckedStoreFrontend('sideloadedStore', {
-  cwd: 'sideload_apps',
-  name: 'library'
 })
 
 const downloadManagerStore = new TypeCheckedStoreFrontend('downloadManager', {
@@ -183,18 +135,8 @@ const gameOverridesStore = new TypeCheckedStoreFrontend('gameOverridesStore', {
 
 export {
   configStore,
-  gogLibraryStore,
-  gogInstalledGamesStore,
-  gogConfigStore,
   libraryStore,
   timestampStore,
-  sideloadLibrary,
-  wineDownloaderInfoStore,
   downloadManagerStore,
-  nileLibraryStore,
-  nileConfigStore,
-  zoomLibraryStore,
-  zoomInstalledGamesStore,
-  zoomConfigStore,
   gameOverridesStore
 }

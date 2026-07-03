@@ -5,13 +5,7 @@ import { GlobalConfig } from './config'
 import { logError, logInfo, LogPrefix } from 'backend/logger'
 import { join } from 'path'
 import { currentGameConfigVersion } from 'backend/constants/others'
-import { isMac, isWindows } from './constants/environment'
-import {
-  configPath,
-  sharedWinePrefix,
-  gamesConfigPath,
-  userHome
-} from './constants/paths'
+import { configPath, gamesConfigPath } from './constants/paths'
 
 /**
  * This class does config handling for games.
@@ -205,81 +199,33 @@ class GameConfigV0 extends GameConfig {
     // The settings defined work as overrides.
 
     const {
-      autoInstallDxvk,
-      autoInstallDxvkNvapi,
-      autoInstallVkd3d,
-      DXVKFpsCap,
       preferSystemLibs,
       autoSyncSaves,
-      enableEsync,
-      enableFSR,
-      enableMsync,
-      enableFsync,
-      enableWineWayland,
-      enableHDR,
-      enableDXVKFpsLimit,
-      enableWoW64,
-      maxSharpness,
       launcherArgs,
-      nvidiaPrime,
       offlineMode,
       enviromentOptions,
       wrapperOptions,
       savesPath,
-      showFps,
-      showMangohud,
       targetExe,
-      useGameMode,
-      winePrefix,
-      wineCrossoverBottle,
-      wineVersion,
-      useSteamRuntime,
-      eacRuntime,
-      battlEyeRuntime,
       beforeLaunchScriptPath,
       afterLaunchScriptPath,
-      gamescope,
-      verboseLogs,
-      advertiseAvxForRosetta
+      verboseLogs
     } = GlobalConfig.get().getSettings()
 
     // initialize generic defaults
-    // TODO: I know more values can be moved that are not used in windows
     const defaultSettings = {
-      autoInstallDxvk,
-      autoInstallDxvkNvapi,
-      autoInstallVkd3d,
-      DXVKFpsCap,
       preferSystemLibs,
       autoSyncSaves,
-      enableEsync,
-      enableMsync,
-      enableFSR,
-      enableFsync,
-      enableWineWayland,
-      enableHDR,
-      enableWoW64,
-      enableDXVKFpsLimit,
-      maxSharpness,
       launcherArgs,
-      nvidiaPrime,
       offlineMode,
       enviromentOptions: [...enviromentOptions],
       wrapperOptions,
       savesPath,
-      showFps,
-      showMangohud,
       targetExe,
-      useGameMode,
-      useSteamRuntime,
-      battlEyeRuntime,
-      eacRuntime,
       language: '', // we want to fallback to '' always here, fallback lang for games should be ''
       beforeLaunchScriptPath,
       afterLaunchScriptPath,
-      gamescope,
       verboseLogs,
-      advertiseAvxForRosetta,
       enableQuickSavesMenu: false
     } as GameSettings
 
@@ -289,26 +235,6 @@ class GameConfigV0 extends GameConfig {
       // read game's settings
       const settings = JSON.parse(readFileSync(this.path, 'utf-8'))
       gameSettings = settings[this.appName] || ({} as GameSettings)
-    } else {
-      // only set the `disableUMU` default value when getting settings for a new game
-      // we want it to be `undefined` for games that were installed already
-      defaultSettings.disableUMU = false
-    }
-
-    if (!isWindows) {
-      defaultSettings.wineVersion = wineVersion
-
-      // set specific keys depending on the platform
-      if (isMac) {
-        defaultSettings.wineCrossoverBottle = wineCrossoverBottle
-      }
-
-      defaultSettings.winePrefix = winePrefix || sharedWinePrefix
-
-      // fix winePrefix if needed
-      if (gameSettings.winePrefix?.includes('~')) {
-        gameSettings.winePrefix = gameSettings.winePrefix.replace('~', userHome)
-      }
     }
 
     // return an object with the game's settings, with fallbacks to the defaults

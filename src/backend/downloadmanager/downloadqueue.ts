@@ -8,9 +8,6 @@ import { sendFrontendMessage } from '../ipc'
 import { callAbortController } from 'backend/utils/aborthandler/aborthandler'
 import { notify } from '../dialog/dialog'
 import i18next from 'i18next'
-import { createRedistDMQueueElement } from 'backend/storeManagers/gog/redist'
-import { existsSync } from 'fs'
-import { gogRedistPath } from 'backend/storeManagers/gog/constants'
 import { onConnectivityChange } from 'backend/online_monitor'
 
 const downloadManager = new TypeCheckedStoreBackend('downloadManager', {
@@ -148,34 +145,11 @@ async function addToQueue(element: DMQueueElement) {
     if (!gameInfo?.isEAManaged && !gameInfo?.isUbisoftManaged) {
       const installInfo = await libraryManagerMap[
         element.params.runner
-      ].getInstallInfo(
-        element.params.appName,
-        element.params.platformToInstall,
-        {
-          branch: element.params.branch,
-          build: element.params.build
-        }
-      )
+      ].getInstallInfo(element.params.appName, element.params.platformToInstall)
 
       element.params.size = installInfo?.manifest?.download_size
         ? getFileSize(installInfo?.manifest?.download_size)
         : '?? MB'
-
-      if (
-        element.params.runner === 'gog' &&
-        element.params.platformToInstall.toLowerCase() === 'windows' &&
-        installInfo &&
-        installInfo.manifest &&
-        'dependencies' in installInfo.manifest
-      ) {
-        const newDependencies = installInfo.manifest.dependencies || []
-        if (newDependencies?.length || !existsSync(gogRedistPath)) {
-          // create redist element
-          const redistElement = createRedistDMQueueElement()
-          redistElement.params.dependencies = newDependencies
-          elements.push(redistElement)
-        }
-      }
     } else {
       element.params.size = '?? MB'
     }
@@ -275,18 +249,12 @@ function resumeCurrentDownload() {
 function stopCurrentDownload() {
   const { appName, runner } = currentElement!.params
   callAbortController(appName)
-  libraryManagerMap[runner].getGame(appName).stop(false)
+  libraryManagerMap[runner].getGame(appName).stop()
 }
 
 // notify the user based on the status of the element and the status of the queue
 function processNotification(element: DMQueueElement, status: DMStatus) {
   const action = element.type === 'install' ? 'Installation' : 'Update'
-  if (
-    element.params.runner === 'gog' &&
-    element.params.appName === 'gog-redist'
-  ) {
-    return
-  }
   const { title } = libraryManagerMap[element.params.runner]
     .getGame(element.params.appName)
     .getGameInfo()

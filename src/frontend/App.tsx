@@ -19,7 +19,6 @@ import { ThemeProvider, createTheme } from '@mui/material/styles'
 import LogFileUploadDialog from './components/UI/LogFileUploadDialog'
 import UploadedLogFilesList from './screens/Settings/sections/LogSettings/components/UploadedLogFilesList'
 import { TourProvider } from './state/TourContext'
-import { InstallGameWrapper } from './screens/Library/components/InstallModal'
 import { SettingsModalWrapper } from './screens/Settings/components/SettingsModal'
 import AnalyticsDialog from './screens/Settings/components/AnalyticsDialog'
 
@@ -91,7 +90,6 @@ function Root() {
             <Sidebar />
             <main className="content">
               <DialogHandler />
-              <InstallGameWrapper />
               <SettingsModalWrapper />
               <ExternalLinkDialog />
               <LogFileUploadDialog />
@@ -130,7 +128,7 @@ const router = createHashRouter([
     children: [
       {
         index: true,
-        lazy: makeLazyFunc(import('./screens/Library'))
+        element: <Navigate replace to="/login" />
       },
       {
         path: 'login',
@@ -145,16 +143,8 @@ const router = createHashRouter([
         lazy: makeLazyFunc(import('./screens/WebView'))
       },
       {
-        path: 'gamepage/:runner/:appName',
-        lazy: makeLazyFunc(import('./screens/Game/GamePage'))
-      },
-      {
         path: 'store-page',
         lazy: makeLazyFunc(import('./screens/WebView'))
-      },
-      {
-        path: 'discounts',
-        lazy: makeLazyFunc(import('./screens/Discounts'))
       },
       {
         path: 'loginweb/:runner',
@@ -163,10 +153,6 @@ const router = createHashRouter([
       {
         path: 'settings/:type',
         lazy: makeLazyFunc(import('./screens/Settings'))
-      },
-      {
-        path: 'wine-manager',
-        lazy: makeLazyFunc(import('./screens/WineManager'))
       },
       {
         path: 'download-manager',
@@ -182,7 +168,7 @@ const router = createHashRouter([
       },
       {
         path: '*',
-        element: <Navigate replace to="/" />
+        element: <Navigate replace to="/login" />
       }
     ]
   }

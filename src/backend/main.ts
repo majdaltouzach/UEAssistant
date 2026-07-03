@@ -1,6 +1,6 @@
 import { initImagesCache } from './images_cache'
 import { fetchLastestReleases } from './utils/releases'
-import { DiskSpaceData, StatusPromise, WineInstallation } from 'common/types'
+import { DiskSpaceData, StatusPromise } from 'common/types'
 import * as path from 'path'
 import {
   BrowserWindow,
@@ -20,7 +20,6 @@ import {
   sendFrontendMessage
 } from 'backend/ipc'
 import 'backend/updater'
-import 'backend/discounts'
 import { autoUpdater } from 'electron-updater'
 import { cpus } from 'os'
 import { existsSync, watch, readdirSync, readFileSync } from 'graceful-fs'
@@ -29,14 +28,9 @@ import 'source-map-support/register'
 import Backend from 'i18next-fs-backend'
 import i18next from 'i18next'
 import { join } from 'path'
-import { DXVK, Winetricks } from './tools'
 import { GameConfig } from './game_config'
 import { GlobalConfig } from './config'
 import { LegendaryUser } from 'backend/storeManagers/legendary/user'
-import { GOGUser } from './storeManagers/gog/user'
-import gogPresence from './storeManagers/gog/presence'
-import { NileUser } from './storeManagers/nile/user'
-import { ZoomUser } from './storeManagers/zoom/user'
 import {
   clearCache,
   isEpicServiceOffline,
@@ -51,13 +45,10 @@ import {
   getShellPath,
   getCurrentChangelog,
   removeFolder,
-  downloadDefaultWine,
   sendGameStatusUpdate,
   checkRosettaInstall,
   writeConfig,
-  createNecessaryFolders,
-  clearAchievementCache,
-  getGame
+  createNecessaryFolders
 } from './utils'
 import { startPlausible } from './utils/plausible'
 
@@ -80,12 +71,7 @@ import {
   logWarning
 } from './logger'
 import { gameInfoStore } from 'backend/storeManagers/legendary/electronStores'
-import {
-  launchEventCallback,
-  readKnownFixes,
-  runWineCommand,
-  validWine
-} from './launcher'
+import { launchEventCallback } from './launcher'
 import { initQueue } from './downloadmanager/downloadqueue'
 import {
   initOnlineMonitor,
@@ -98,7 +84,6 @@ import { getDefaultSavePath } from './save_sync'
 import { initTrayIcon } from './tray_icon/tray_icon'
 import { createMainWindow, getMainWindow, isFrameless } from './main_window'
 
-import { playtimeSyncQueue } from './storeManagers/gog/electronStores'
 import {
   autoUpdate,
   initStoreManagers,
@@ -122,9 +107,7 @@ import {
   patreonPage,
   sidInfoUrl,
   supportURL,
-  weblateUrl,
-  wikiLink,
-  wineprefixFAQ
+  weblateUrl
 } from './constants/urls'
 import { legendaryInstalled } from './storeManagers/legendary/constants'
 import {
@@ -132,7 +115,6 @@ import {
   isCLIFullscreen,
   isCLINoGui,
   isFlatpak,
-  isIntelMac,
   isLinux,
   isMac,
   isSnap,
@@ -171,27 +153,6 @@ async function initializeWindow(): Promise<BrowserWindow> {
   }
 
   setTimeout(async () => {
-    // Will download Wine/GPTK if none was found
-    const availableWine = await GlobalConfig.get().getAlternativeWine()
-    let shouldDownloadWine = !availableWine.length
-
-    if (isMac && !isIntelMac) {
-      const toolkitDownloaded = availableWine.some(
-        (wine) => wine.type === 'toolkit'
-      )
-
-      if (!toolkitDownloaded) {
-        shouldDownloadWine = true
-      }
-    }
-
-    void DXVK.getLatest()
-
-    Winetricks.download()
-    if (shouldDownloadWine) {
-      downloadDefaultWine()
-    }
-
     if (isMac) {
       checkRosettaInstall()
     }
@@ -355,11 +316,6 @@ if (!gotTheLock) {
         })
         configStore.delete('userInfo')
       }
-
-      // Update user details
-      if (GOGUser.isLoggedIn()) {
-        GOGUser.getUserDetails()
-      }
     })
 
     const settings = GlobalConfig.get().getSettings()
@@ -372,16 +328,6 @@ if (!gotTheLock) {
       app.commandLine.appendSwitch('disable-smooth-scrolling')
     }
 
-    // Make sure lock is not present when starting up
-    playtimeSyncQueue.delete('lock')
-    if (!settings.disablePlaytimeSync) {
-      runOnceWhenOnline(() => libraryManagerMap['gog'].syncQueuedPlaytime())
-    } else {
-      logDebug('Skipping playtime sync queue upload - playtime sync disabled', {
-        prefix: LogPrefix.Backend
-      })
-    }
-    runOnceWhenOnline(gogPresence.setPresence)
     await i18next.use(Backend).init({
       backend: {
         addPath: path.join(publicDir, 'locales', '{{lng}}', '{{ns}}'),
@@ -628,9 +574,7 @@ addListener('openKofiPage', async () => openUrlOrFile(kofiPage))
 addListener('openGithubSponsorsPage', async () =>
   openUrlOrFile(githubSponsorsPage)
 )
-addListener('openWinePrefixFAQ', async () => openUrlOrFile(wineprefixFAQ))
 addListener('openWebviewPage', async (event, url) => openUrlOrFile(url))
-addListener('openWikiLink', async () => openUrlOrFile(wikiLink))
 addListener('openSidInfoPage', async () => openUrlOrFile(sidInfoUrl))
 addListener('openCustomThemesWiki', async () =>
   openUrlOrFile(customThemesWikiLink)
@@ -645,8 +589,6 @@ addListener('showConfigFileInFolder', async (event, appName) => {
 addListener('removeFolder', async (e, [path, folderName]) => {
   removeFolder(path, folderName)
 })
-
-addHandler('runWineCommand', async (e, args) => runWineCommand(args))
 
 /// IPC handlers begin here.
 
@@ -712,14 +654,6 @@ addListener('clearCache', (event, showDialog, fromVersionChange = false) => {
   }
 })
 
-addListener('clearAchievementCache', (event, appName: string) => {
-  clearAchievementCache(appName)
-  logInfo(
-    'Achievement cache was cleared for game: ' + appName,
-    LogPrefix.Backend
-  )
-})
-
 addListener('resetHeroic', () => resetHeroic())
 
 addListener('createNewWindow', (e, url) => {
@@ -749,13 +683,6 @@ addHandler('getGameInfo', async (event, appName, runner) => {
   return attachOverrides(tempGameInfo)
 })
 
-addHandler(
-  'getAchievements',
-  async (event, appName, runner, lang = 'en-US') => {
-    return getGame(appName, runner).getAchievements?.(lang) ?? []
-  }
-)
-
 addHandler('getExtraInfo', async (event, appName, runner) => {
   // Fastpath since we sometimes have to request info for a GOG game as Legendary because we don't know it's a GOG game yet
   if (
@@ -776,29 +703,18 @@ addHandler('getGameSettings', async (event, appName, runner) => {
   }
 })
 
-addHandler('getGOGLinuxInstallersLangs', async (event, appName) =>
-  libraryManagerMap['gog'].getLinuxInstallersLanguages(appName)
-)
-
 addHandler(
   'getInstallInfo',
-  async (event, appName, runner, installPlatform, build, branch) => {
+  async (event, appName, runner, installPlatform) => {
     try {
       const info = await libraryManagerMap[runner].getInstallInfo(
         appName,
-        installPlatform,
-        {
-          branch,
-          build
-        }
+        installPlatform
       )
       if (info === undefined) return null
       return info
     } catch (error) {
-      logError(
-        error,
-        runner === 'legendary' ? LogPrefix.Legendary : LogPrefix.Gog
-      )
+      logError(error, LogPrefix.Legendary)
       return null
     }
   }
@@ -808,34 +724,11 @@ addHandler('getUserInfo', async () => {
   return LegendaryUser.getUserInfo()
 })
 
-addHandler('getAmazonUserInfo', async () => NileUser.getUserData())
-
 // Checks if the user have logged in with Legendary already
 addHandler('isLoggedIn', () => LegendaryUser.isLoggedIn())
 
 addHandler('login', async (event, sid) => LegendaryUser.login(sid))
-addHandler('authGOG', async (event, code) => GOGUser.login(code))
 addHandler('logoutLegendary', () => LegendaryUser.logout())
-addListener('logoutGOG', () => GOGUser.logout())
-
-addHandler('getAmazonLoginData', () => NileUser.getLoginData())
-addHandler('authAmazon', async (event, data) => NileUser.login(data))
-addHandler('logoutAmazon', () => NileUser.logout())
-
-addHandler('authZoom', async (event, url) => {
-  const login = await ZoomUser.login(url)
-  if (login.status === 'done') {
-    await ZoomUser.getUserDetails()
-  }
-  return login
-})
-
-addListener('logoutZoom', () => ZoomUser.logout())
-addHandler('getZoomUserInfo', async () => ZoomUser.getUserDetails())
-
-addHandler('getAlternativeWine', async () =>
-  GlobalConfig.get().getAlternativeWine()
-)
 
 addHandler('readConfig', async (event, configClass) => {
   if (configClass === 'library') {
@@ -850,30 +743,6 @@ addHandler('requestAppSettings', () => GlobalConfig.get().getSettings())
 addHandler(
   'requestGameSettings',
   async (_e, appName) => await GameConfig.get(appName).getSettings()
-)
-
-addHandler('toggleDXVK', async (event, { appName, action }) =>
-  GameConfig.get(appName)
-    .getSettings()
-    .then(async (gameSettings) =>
-      DXVK.installRemove(gameSettings, 'dxvk', action)
-    )
-)
-
-addHandler('toggleDXVKNVAPI', async (event, { appName, action }) =>
-  GameConfig.get(appName)
-    .getSettings()
-    .then(async (gameSettings) =>
-      DXVK.installRemove(gameSettings, 'dxvk-nvapi', action)
-    )
-)
-
-addHandler('toggleVKD3D', async (event, { appName, action }) =>
-  GameConfig.get(appName)
-    .getSettings()
-    .then(async (gameSettings) =>
-      DXVK.installRemove(gameSettings, 'vkd3d', action)
-    )
 )
 
 addHandler('writeConfig', (event, { appName, config }) =>
@@ -1024,18 +893,7 @@ addHandler(
 
 addHandler(
   'importGame',
-  async (
-    event,
-    {
-      appName,
-      path,
-      runner,
-      platform,
-      winePrefix,
-      wineVersion,
-      wineCrossoverBottle
-    }
-  ): StatusPromise => {
+  async (event, { appName, path, runner, platform }): StatusPromise => {
     if (runner === 'legendary') {
       const epicOffline = await isEpicServiceOffline()
       if (epicOffline) {
@@ -1085,16 +943,6 @@ addHandler(
       return { status: 'error' }
     }
 
-    if (winePrefix && wineVersion) {
-      const gameSettings = await getGame(appName, runner).getSettings()
-      writeConfig(appName, {
-        ...gameSettings,
-        winePrefix,
-        wineVersion,
-        wineCrossoverBottle
-      })
-    }
-
     notify({
       title,
       body: i18next.t('notify.install.imported', 'Game Imported')
@@ -1125,10 +973,6 @@ addHandler('changeInstallPath', async (event, { appName, path, runner }) => {
 addHandler('egsSync', async (event, args) => {
   return libraryManagerMap['legendary'].toggleGamesSync(args)
 })
-
-addHandler('syncGOGSaves', async (event, gogSaves, appName, arg) =>
-  libraryManagerMap['gog'].getGame(appName).syncSaves(arg, '', gogSaves)
-)
 
 addHandler('getLaunchOptions', async (event, appName, runner) => {
   const availableLaunchOptions =
@@ -1179,10 +1023,8 @@ addHandler('syncSaves', async (event, { arg = '', path, appName, runner }) => {
   return output
 })
 
-addHandler(
-  'getDefaultSavePath',
-  async (event, appName, runner, alreadyDefinedGogSaves) =>
-    getDefaultSavePath(appName, runner, alreadyDefinedGogSaves)
+addHandler('getDefaultSavePath', async (event, appName, runner) =>
+  getDefaultSavePath(appName, runner)
 )
 
 // Simulate keyboard and mouse actions as if the real input device is used
@@ -1358,10 +1200,6 @@ addListener('setTitleBarOverlay', (e, args) => {
   }
 })
 
-addListener('addNewApp', (e, args) =>
-  libraryManagerMap['sideload'].addNewApp(args)
-)
-
 addListener('setGameMetadataOverride', (e, args) => {
   const { appName, title, art_cover, art_square } = args
   setGameOverrides(appName, { title, art_cover, art_square })
@@ -1414,46 +1252,9 @@ addListener('processShortcut', async (e, combination: string) => {
   }
 })
 
-addHandler(
-  'getPlaytimeFromRunner',
-  async (e, runner, appName): Promise<number | undefined> => {
-    const { disablePlaytimeSync } = GlobalConfig.get().getSettings()
-    if (disablePlaytimeSync) {
-      return
-    }
-    if (runner === 'gog') {
-      return libraryManagerMap[runner].getGame(appName).getGOGPlaytime()
-    }
-
-    return
-  }
-)
-
-addHandler('getPrivateBranchPassword', (e, appName) =>
-  libraryManagerMap['gog'].getGame(appName).getBranchPassword()
-)
-addHandler('setPrivateBranchPassword', (e, appName, password) =>
-  libraryManagerMap['gog'].getGame(appName).setBranchPassword(password)
-)
-
-addHandler('getAvailableCyberpunkMods', async () =>
-  libraryManagerMap['gog'].getCyberpunkMods()
-)
-addHandler('setCyberpunkModConfig', async (e, props) =>
-  libraryManagerMap['gog'].setCyberpunkModConfig(props)
-)
-
-addListener('changeGameVersionPinnedStatus', (e, appName, runner, status) => {
-  libraryManagerMap[runner].changeVersionPinnedStatus(appName, status)
+addHandler('getPlaytimeFromRunner', async (): Promise<number | undefined> => {
+  return
 })
-
-addHandler('getKnownFixes', (e, appName, runner) =>
-  readKnownFixes(appName, runner)
-)
-
-addHandler('wine.isValidVersion', async (e, wineVersion: WineInstallation) =>
-  validWine(wineVersion)
-)
 
 /*
   Other Keys that should go into translation files:
@@ -1465,15 +1266,9 @@ addHandler('wine.isValidVersion', async (e, wineVersion: WineInstallation) =>
  * INSERT OTHER IPC HANDLERS HERE
  */
 import './logger/ipc_handler'
-import './wine/manager/ipc_handler'
 import './shortcuts/ipc_handler'
-import './anticheat/ipc_handler'
 import './storeManagers/legendary/eos_overlay/ipc_handler'
-import './wine/runtimes/ipc_handler'
 import './downloadmanager/ipc_handler'
 import './utils/ipc_handler'
-import './wiki_game_info/ipc_handler'
 import './recent_games/ipc_handler'
-import './tools/ipc_handler'
 import './progress_bar'
-import './steamgrid/ipc_handler'

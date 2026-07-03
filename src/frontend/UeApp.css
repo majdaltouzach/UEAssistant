@@ -1,0 +1,149 @@
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  background: #14161a;
+  color: #e8e8e8;
+}
+
+.ue-app {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.ue-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.ue-header h1 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.ue-account {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ue-error {
+  background: #4a1f1f;
+  border: 1px solid #8a3a3a;
+  color: #ffb3b3;
+  padding: 8px 12px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.ue-error button {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.ue-login {
+  text-align: center;
+  padding: 48px 0;
+}
+
+section {
+  margin-bottom: 32px;
+}
+
+.ue-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+h2 {
+  font-size: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #a0a0a0;
+}
+
+.ue-muted {
+  color: #8a8a8a;
+  font-size: 13px;
+}
+
+.ue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ue-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px;
+  border: 1px solid #2a2d33;
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.ue-progress {
+  position: relative;
+  margin-top: 6px;
+  height: 6px;
+  width: 260px;
+  background: #2a2d33;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.ue-progress-bar {
+  position: absolute;
+  inset: 0;
+  background: #4a9eff;
+  transition: width 0.3s ease;
+}
+
+.ue-progress span {
+  display: block;
+  font-size: 12px;
+  color: #a0a0a0;
+  margin-top: 4px;
+}
+
+button {
+  background: #2a2d33;
+  color: #e8e8e8;
+  border: 1px solid #3a3d43;
+  border-radius: 6px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+button:hover:not(:disabled) {
+  background: #3a3d43;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ue-login button {
+  background: #4a9eff;
+  border-color: #4a9eff;
+  color: #0a0a0a;
+  font-weight: 600;
+  padding: 10px 20px;
+}

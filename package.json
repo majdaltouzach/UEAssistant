@@ -1,15 +1,15 @@
 {
-  "name": "heroic",
-  "version": "2.22.0",
+  "name": "ueassistant",
+  "version": "0.1.0",
   "versionNames": {
-    "stable": "Hajrudin",
-    "beta": "Caesar Clown"
+    "stable": "Nanite",
+    "beta": "Lumen"
   },
   "private": false,
   "main": "build/main/main.js",
   "homepage": "./",
   "license": "GPL-3.0-only",
-  "description": "An Open Source Launcher for GOG, Epic Games and Amazon Games",
+  "description": "A Linux-native Unreal Engine installer/updater",
   "repository": {
     "type": "Github",
     "url": "https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher"
@@ -25,6 +25,8 @@
   "scripts": {
     "start": "electron-vite dev --watch",
     "debug:react": "pnpm start & react-devtools",
+    "tauri:dev": "pnpm --filter ueassistant-tauri exec tauri dev",
+    "tauri:build": "pnpm --filter ueassistant-tauri exec tauri build",
     "codecheck": "tsc --noEmit",
     "find-deadcode": "ts-prune --error",
     "test": "jest",

@@ -1,40 +1,20 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'graceful-fs'
 
-import {
-  AppSettings,
-  GlobalConfigVersion,
-  WineInstallation
-} from 'common/types'
+import { AppSettings, GlobalConfigVersion } from 'common/types'
 import { currentGlobalConfigVersion } from 'backend/constants/others'
 
 import { logError, logInfo, LogPrefix } from './logger'
-import {
-  getCrossover,
-  getDefaultWine,
-  getGamePortingToolkitWine,
-  getLinuxWineSet,
-  getSystemGamePortingToolkitWine,
-  getWhisky,
-  getWineOnMac,
-  getWineskinWine
-} from './utils/compatibility_layers'
 import { backendEvents } from './backend_events'
 import { configStore } from './constants/key_value_stores'
-import { isFlatpak, isLinux, isMac, isWindows } from './constants/environment'
+import { isFlatpak, isMac, isWindows } from './constants/environment'
 import {
   configPath,
-  sharedWinePrefix,
   gamesConfigPath,
   heroicInstallPath,
-  userHome,
-  defaultWinePrefixDir
+  userHome
 } from './constants/paths'
 import { join } from 'path'
 import { spawnSync } from 'child_process'
-import {
-  updateWineVersionInfos,
-  wineDownloaderInfoStore
-} from './wine/manager/utils'
 
 function getSteamCompatFolder() {
   // Paths are from https://savelocation.net/steam-game-folder
@@ -157,55 +137,6 @@ abstract class GlobalConfig {
   }
 
   /**
-   * Detects Wine on Mac
-   * @returns Promise<Set<WineInstallation>>
-   * @memberof GlobalConfig
-   **/
-  public async getMacOsWineSet(): Promise<Set<WineInstallation>> {
-    if (!isMac) {
-      return new Set<WineInstallation>()
-    }
-
-    const getGPTKWine = await getGamePortingToolkitWine()
-    const getSystemGPTK = await getSystemGamePortingToolkitWine()
-    const crossover = await getCrossover()
-    const wineOnMac = await getWineOnMac()
-    const wineskinWine = await getWineskinWine()
-    const whiskyWine = await getWhisky()
-
-    return new Set([
-      ...getGPTKWine,
-      ...getSystemGPTK,
-      ...crossover,
-      ...wineOnMac,
-      ...wineskinWine,
-      ...whiskyWine
-    ])
-  }
-
-  /**
-   * Detects Wine/Proton on the user's system.
-   *
-   * @returns An Array of Wine/Proton installations.
-   */
-  public async getAlternativeWine(
-    scanCustom = true
-  ): Promise<WineInstallation[]> {
-    if (wineDownloaderInfoStore.get('wine-releases', []).length === 0) {
-      await updateWineVersionInfos(true)
-    }
-
-    if (isMac) {
-      const macOsWineSet = await this.getMacOsWineSet()
-      return [...macOsWineSet]
-    }
-
-    const linuxWineSet = await getLinuxWineSet(scanCustom)
-
-    return [...linuxWineSet]
-  }
-
-  /**
    * Gets the actual settings from the config file.
    * Does not modify its parent object.
    * Always reads from file regardless of `this.config`.
@@ -299,84 +230,65 @@ class GlobalConfigV0 extends GlobalConfig {
       return this.getFactoryDefaults()
     }
 
-    let settings = JSON.parse(readFileSync(configPath, 'utf-8'))
+    const settings = JSON.parse(readFileSync(configPath, 'utf-8'))
     const defaultSettings = settings.defaultSettings as AppSettings
 
-    // keep old setting value for backwards compatibility, always use defaultWinePrefixDir in new code
-    if (!defaultSettings.defaultWinePrefixDir)
-      defaultSettings.defaultWinePrefixDir = defaultSettings.defaultWinePrefix
-
-    // fix relative paths
-    const winePrefix = !isWindows
-      ? defaultSettings?.winePrefix?.replace('~', userHome)
-      : ''
-
-    settings = {
+    return {
       ...this.getFactoryDefaults(),
-      ...defaultSettings,
-      winePrefix
+      ...defaultSettings
     } as AppSettings
-
-    return settings
   }
 
   public getFactoryDefaults(): AppSettings {
-    // @ts-expect-error FIXME: Settings values don't work like this in other parts of the codebase
-    const defaultWine: WineInstallation = isWindows ? {} : getDefaultWine()
-
-    const settings: Partial<AppSettings> = {
+    const settings: AppSettings = {
       analyticsOptIn: false,
       checkUpdatesInterval: 10,
       enableUpdates: false,
       addDesktopShortcuts: false,
       addStartMenuShortcuts: false,
-      autoInstallDxvk: isLinux || isMac,
-      autoInstallVkd3d: isLinux,
-      autoInstallDxvkNvapi: isLinux,
       addSteamShortcuts: false,
+      altLegendaryBin: '',
       preferSystemLibs: false,
       checkForUpdatesOnStartup: !isFlatpak,
       autoUpdateGames: false,
-      customWinePaths: [],
+      customCSS: '',
+      customThemesPath: '',
+      darkTrayIcon: false,
       defaultInstallPath: heroicInstallPath,
       libraryTopSection: 'disabled',
       defaultSteamPath: getSteamCompatFolder(),
-      defaultWinePrefix: defaultWinePrefixDir,
-      defaultWinePrefixDir: defaultWinePrefixDir,
       hideChangelogsOnStartup: false,
       language: 'en',
+      maxRecentGames: 5,
       maxWorkers: 0,
       minimizeOnLaunch: false,
-      nvidiaPrime: false,
       enviromentOptions: [],
       wrapperOptions: [],
-      showFps: false,
-      useGameMode: isFlatpak,
-      wineCrossoverBottle: 'Heroic',
-      winePrefix: isWindows ? '' : sharedWinePrefix,
-      wineVersion: defaultWine,
-      enableEsync: true,
-      enableFsync: isLinux,
-      enableMsync: isMac,
-      enableWineWayland: false,
-      enableHDR: false,
-      enableWoW64: false,
-      eacRuntime: isLinux,
-      battlEyeRuntime: isLinux,
       framelessWindow: false,
       hideWindowOnProtocolLaunch: false,
       beforeLaunchScriptPath: '',
       afterLaunchScriptPath: '',
-      disableUMU: false,
       verboseLogs: true,
-      downloadProtonToSteam: false,
-      advertiseAvxForRosetta: isMac && defaultWine.type === 'toolkit',
       noTrayIcon: false,
-      showValveProton: false,
-      steamGridDbApiKey: '',
-      disableGOGPresence: false
+      disableController: false,
+      disablePlaytimeSync: false,
+      disableSmoothScrolling: false,
+      disableLogs: false,
+      disableAnimations: false,
+      discordRPC: false,
+      downloadNoHttps: false,
+      egsLinkedPath: '',
+      exitToTray: false,
+      startInConsoleMode: false,
+      startInTray: false,
+      autoSyncSaves: false,
+      ignoreGameUpdates: false,
+      launcherArgs: '',
+      offlineMode: false,
+      targetExe: '',
+      savesPath: '',
+      enableQuickSavesMenu: false
     }
-    // @ts-expect-error TODO: We need to settle on *one* place to define settings defaults
     return settings
   }
 

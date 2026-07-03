@@ -3,7 +3,6 @@ import type { OpenDialogOptions, TitleBarOverlay } from 'electron'
 import type { SystemInformation } from 'backend/utils/systeminfo'
 
 import type {
-  AntiCheatInfo,
   AppSettings,
   ButtonOptions,
   ConnectivityStatus,
@@ -11,9 +10,7 @@ import type {
   DiskSpaceData,
   DMQueueElement,
   DownloadManagerState,
-  ExecResult,
   ExtraInfo,
-  GameAchievement,
   GameInfo,
   GamepadActionArgs,
   GameSettings,
@@ -22,7 +19,6 @@ import type {
   InstallInfo,
   InstallParams,
   InstallPlatform,
-  KnowFixesInfo,
   LaunchOption,
   LaunchParams,
   MoveGameArgs,
@@ -30,24 +26,13 @@ import type {
   Release,
   Runner,
   RunnerCommandStub,
-  RuntimeName,
-  RunWineCommandArgs,
   SaveSyncArgs,
   StatusPromise,
-  ToolArgs,
   Tools,
   UpdateParams,
   UploadedLogData,
-  UserInfo,
-  WikiInfo,
-  WineCommandArgs,
-  WineInstallation,
-  WineManagerStatus,
-  WineVersionInfo
+  UserInfo
 } from '../types'
-import type { CatalogLocaleSettings, CatalogProduct } from './discounts'
-import type { GOGCloudSavesLocation, UserData } from './gog'
-import type { NileLoginData, NileRegisterData, NileUserData } from './nile'
 import type { GameOverride, SelectiveDownload } from './legendary'
 import type { GetLogFileArgs } from 'backend/logger/paths'
 
@@ -71,24 +56,19 @@ interface SyncIPCFunctions {
   openPatreonPage: () => void
   openKofiPage: () => void
   openGithubSponsorsPage: () => void
-  openWinePrefixFAQ: () => void
   openWebviewPage: (url: string) => void
-  openWikiLink: () => void
   openSidInfoPage: () => void
   openCustomThemesWiki: () => void
   showConfigFileInFolder: (appName: string) => void
   removeFolder: ([path, folderName]: [string, string]) => void
   clearCache: (showDialog?: boolean, fromVersionChange?: boolean) => void
-  clearAchievementCache: (appName: string) => void
   resetHeroic: () => void
   createNewWindow: (url: string) => void
-  logoutGOG: () => void
   logError: (message: unknown) => void
   logInfo: (message: unknown) => void
   showItemInFolder: (item: string) => void
   clipboardWriteText: (text: string) => void
   processShortcut: (combination: string) => void
-  addNewApp: (args: GameInfo) => void
   showLogFileInFolder: (args: GetLogFileArgs) => void
   addShortcut: (appName: string, runner: Runner, fromMenu: boolean) => void
   removeShortcut: (appName: string, runner: Runner) => void
@@ -113,17 +93,6 @@ interface SyncIPCFunctions {
   closeWindow: () => void
   setFullscreen: (enabled: boolean) => void
   setTitleBarOverlay: (options: TitleBarOverlay) => void
-  winetricksInstall: (
-    runner: Runner,
-    appName: string,
-    component: string
-  ) => void
-  changeGameVersionPinnedStatus: (
-    appName: string,
-    runner: Runner,
-    status: boolean
-  ) => void
-  logoutZoom: () => void
   setGameMetadataOverride: (args: {
     appName: string
     title?: string
@@ -141,10 +110,6 @@ interface SyncIPCFunctions {
 interface TestSyncIPCFunctions {
   setLegendaryCommandStub: (stubs: RunnerCommandStub[]) => void
   resetLegendaryCommandStub: () => void
-  setGogdlCommandStub: (stubs: RunnerCommandStub[]) => void
-  resetGogdlCommandStub: () => void
-  setNileCommandStub: (stubs: RunnerCommandStub[]) => void
-  resetNileCommandStub: () => void
 }
 
 // ts-prune-ignore-next
@@ -152,20 +117,12 @@ interface AsyncIPCFunctions {
   kill: (appName: string, runner: Runner) => Promise<void>
   checkDiskSpace: (folder: string) => Promise<DiskSpaceData>
   callTool: (args: Tools) => Promise<void>
-  runWineCommand: (
-    args: WineCommandArgs
-  ) => Promise<{ stdout: string; stderr: string }>
-  winetricksInstalled: (runner: Runner, appName: string) => Promise<string[]>
-  winetricksAvailable: (runner: Runner, appName: string) => Promise<string[]>
   checkGameUpdates: () => Promise<string[]>
   getEpicGamesStatus: () => Promise<boolean>
   updateAll: () => Promise<({ status: 'done' | 'error' | 'abort' } | null)[]>
   getMaxCpus: () => number
   getHeroicVersion: () => string
   getLegendaryVersion: () => Promise<string>
-  getGogdlVersion: () => Promise<string>
-  getCometVersion: () => Promise<string>
-  getNileVersion: () => Promise<string>
   isFullscreen: () => boolean
   isFrameless: () => boolean
   isMaximized: () => boolean
@@ -174,17 +131,11 @@ interface AsyncIPCFunctions {
   getLatestReleases: () => Promise<Release[]>
   getCurrentChangelog: () => Promise<Release | null>
   getGameInfo: (appName: string, runner: Runner) => Promise<GameInfo | null>
-  getAchievements: (
-    appName: string,
-    runner: Runner,
-    lang?: string
-  ) => Promise<GameAchievement[]>
   getExtraInfo: (appName: string, runner: Runner) => Promise<ExtraInfo | null>
   getGameSettings: (
     appName: string,
     runner: Runner
   ) => Promise<GameSettings | null>
-  getGOGLinuxInstallersLangs: (appName: string) => Promise<string[]>
   getInstallInfo: (
     appName: string,
     runner: Runner,
@@ -193,25 +144,12 @@ interface AsyncIPCFunctions {
     build?: string
   ) => Promise<InstallInfo | null>
   getUserInfo: () => Promise<UserInfo | undefined>
-  getAmazonUserInfo: () => Promise<NileUserData | undefined>
-  getZoomUserInfo: () => Promise<{ username: string } | undefined>
   isLoggedIn: () => boolean
   login: (sid: string) => Promise<{
     status: 'done' | 'failed'
     data: UserInfo | undefined
   }>
-  authGOG: (code: string) => Promise<{
-    status: 'done' | 'error'
-    data?: UserData
-  }>
-  authAmazon: (data: NileRegisterData) => Promise<{
-    status: 'done' | 'failed'
-    user: NileUserData | undefined
-  }>
-  authZoom: (url: string) => Promise<{ status: 'done' | 'error' }>
   logoutLegendary: () => Promise<void>
-  logoutAmazon: () => Promise<void>
-  getAlternativeWine: () => Promise<WineInstallation[]>
   readConfig: (config_class: 'library' | 'user') => Promise<GameInfo[] | string>
   requestAppSettings: () => AppSettings
   requestGameSettings: (appName: string) => Promise<GameSettings>
@@ -232,14 +170,8 @@ interface AsyncIPCFunctions {
   updateGame: (args: UpdateParams) => Promise<void>
   changeInstallPath: (args: MoveGameArgs) => Promise<void>
   egsSync: (arg: string) => Promise<string>
-  syncGOGSaves: (
-    gogSaves: GOGCloudSavesLocation[],
-    appname: string,
-    arg: string
-  ) => Promise<string>
   syncSaves: (args: SaveSyncArgs) => Promise<string>
   gamepadAction: (args: GamepadActionArgs) => Promise<void>
-  runWineCommandForGame: (args: RunWineCommandArgs) => Promise<ExecResult>
   getShellPath: (path: string) => Promise<string>
   getWebviewPreloadPath: () => string
   clipboardReadText: () => string
@@ -247,16 +179,10 @@ interface AsyncIPCFunctions {
   getThemeCSS: (theme: string) => Promise<string>
   isNative: (args: { appName: string; runner: Runner }) => boolean
   getLogContent: (args: GetLogFileArgs) => string
-  installWineVersion: (release: WineVersionInfo) => Promise<void>
-  refreshWineVersionInfo: (fetch?: boolean) => Promise<void>
-  removeWineVersion: (release: WineVersionInfo) => Promise<void>
-  'wine.isValidVersion': (release: WineInstallation) => Promise<boolean>
   shortcutsExists: (appName: string, runner: Runner) => boolean
   addToSteam: (appName: string, runner: Runner) => Promise<boolean>
   removeFromSteam: (appName: string, runner: Runner) => Promise<void>
   isAddedToSteam: (appName: string, runner: Runner) => Promise<boolean>
-  getAnticheatInfo: (appNamespace: string) => Promise<AntiCheatInfo | null>
-  getKnownFixes: (appName: string, runner: Runner) => KnowFixesInfo | null
   getGameMetadataOverride: (appName: string) => Promise<{
     title?: string
     art_cover?: string
@@ -281,13 +207,12 @@ interface AsyncIPCFunctions {
   updateEosOverlayInfo: () => Promise<void>
   installEosOverlay: () => Promise<string | undefined>
   removeEosOverlay: () => Promise<boolean>
-  enableEosOverlay: (
-    appName: string
-  ) => Promise<{ wasEnabled: boolean; installNow?: boolean }>
-  disableEosOverlay: (appName: string) => Promise<void>
-  isEosOverlayEnabled: (appName?: string) => Promise<boolean>
-  downloadRuntime: (runtime_name: RuntimeName) => Promise<boolean>
-  isRuntimeInstalled: (runtime_name: RuntimeName) => Promise<boolean>
+  enableEosOverlay: () => Promise<{
+    wasEnabled: boolean
+    installNow?: boolean
+  }>
+  disableEosOverlay: () => Promise<void>
+  isEosOverlayEnabled: () => Promise<boolean>
   getDMQueueInformation: () => {
     elements: DMQueueElement[]
     finished: DMQueueElement[]
@@ -299,23 +224,11 @@ interface AsyncIPCFunctions {
   }
   getSystemInfo: (cache?: boolean) => Promise<SystemInformation>
   removeRecent: (appName: string) => Promise<void>
-  getWikiGameInfo: (
-    title: string,
-    appName: string,
-    runner: Runner
-  ) => Promise<WikiInfo | null>
-  getDefaultSavePath: (
-    appName: string,
-    runner: Runner,
-    alreadyDefinedGogSaves: GOGCloudSavesLocation[]
-  ) => Promise<string | GOGCloudSavesLocation[]>
+  getDefaultSavePath: (appName: string, runner: Runner) => Promise<string>
   isGameAvailable: (args: {
     appName: string
     runner: Runner
   }) => Promise<boolean>
-  toggleDXVK: (args: ToolArgs) => Promise<boolean>
-  toggleVKD3D: (args: ToolArgs) => Promise<boolean>
-  toggleDXVKNVAPI: (args: ToolArgs) => Promise<boolean>
   pathExists: (path: string) => Promise<boolean>
   getLaunchOptions: (appName: string, runner: Runner) => Promise<LaunchOption[]>
   getGameOverride: () => Promise<GameOverride>
@@ -324,17 +237,7 @@ interface AsyncIPCFunctions {
     runner: Runner,
     appName: string
   ) => Promise<number | undefined>
-  getAmazonLoginData: () => Promise<NileLoginData>
   hasExecutable: (executable: string) => Promise<boolean>
-
-  setPrivateBranchPassword: (appName: string, password: string) => void
-  getPrivateBranchPassword: (appName: string) => string
-
-  getAvailableCyberpunkMods: () => Promise<string[]>
-  setCyberpunkModConfig: (props: {
-    enabled: boolean
-    modsToLoad: string[]
-  }) => Promise<void>
 
   uploadLogFile: (
     name: string,
@@ -344,31 +247,10 @@ interface AsyncIPCFunctions {
   getUploadedLogFiles: () => Promise<Record<string, UploadedLogData>>
   getCustomCSS: () => Promise<string>
   isIntelMac: () => boolean
-  getGogDiscounts: (
-    locale: CatalogLocaleSettings,
-    hideOwned?: boolean,
-    wishlistOnly?: boolean
-  ) => Promise<CatalogProduct[]>
-  'steamgriddb.hasApiKey': () => Promise<boolean>
-  'steamgriddb.setApiKey': (key: string) => Promise<void>
-  'steamgriddb.searchGame': (
-    query: string
-  ) => Promise<Array<{ id: number; name: string }>>
-  'steamgriddb.getGrids': (args: {
-    gameId: number
-    styles?: string[]
-    dimensions?: string[]
-  }) => Promise<Array<{ id: number; url: string; thumb: string }>>
-  'steamgriddb.getHeroes': (args: {
-    gameId: number
-    styles?: string[]
-    dimensions?: string[]
-  }) => Promise<Array<{ id: number; url: string; thumb: string }>>
 }
 
 interface FrontendMessages {
   gameStatusUpdate: (status: GameStatus) => void
-  wineVersionsUpdated: () => void
   showDialog: (
     title: string,
     message: string,
@@ -392,12 +274,6 @@ interface FrontendMessages {
   installGame: (appName: string, runner: Runner) => void
   recentGamesChanged: (newRecentGames: RecentGame[]) => void
   pushGameToLibrary: (info: GameInfo) => void
-  progressOfWinetricks: (payload: {
-    messages: string[]
-    installingComponent: string
-  }) => void
-  progressOfWineManager: (version: string, progress: WineManagerStatus) => void
-  'installing-winetricks-component': (component: string) => void
   logFileUploaded: (url: string, data: UploadedLogData) => void
   logFileUploadDeleted: (url: string) => void
   progressUpdate: (progress: GameStatus) => void

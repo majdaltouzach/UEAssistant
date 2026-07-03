@@ -58,17 +58,8 @@ const CANCEL_DOWNLOAD_COPY = {
 export default function ConsoleMode() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const {
-    epic,
-    gog,
-    amazon,
-    zoom,
-    libraryStatus,
-    sideloadedLibrary,
-    refreshLibrary,
-    refreshing,
-    gameUpdates
-  } = useContext(ContextProvider)
+  const { epic, libraryStatus, refreshLibrary, refreshing, gameUpdates } =
+    useContext(ContextProvider)
 
   const [activeStore, setActiveStore] = useState<StoreKey>('all')
   const [ascending, setAscending] = useState(true)
@@ -98,13 +89,7 @@ export default function ConsoleMode() {
 
   useEffect(() => {
     window.api.setFullscreen(true)
-    if (
-      !refreshing &&
-      epic.library.length === 0 &&
-      gog.library.length === 0 &&
-      amazon.library.length === 0 &&
-      zoom.library.length === 0
-    ) {
+    if (!refreshing && epic.library.length === 0) {
       void refreshLibrary({ runInBackground: true })
     }
     return () => {
@@ -114,21 +99,10 @@ export default function ConsoleMode() {
   }, [])
 
   const allGames = useMemo<GameInfo[]>(() => {
-    const all: GameInfo[] = [
-      ...epic.library,
-      ...gog.library,
-      ...amazon.library,
-      ...zoom.library,
-      ...sideloadedLibrary
-    ]
-    return all.filter((g) => !g.install?.is_dlc && !g.thirdPartyManagedApp)
-  }, [
-    epic.library,
-    gog.library,
-    amazon.library,
-    zoom.library,
-    sideloadedLibrary
-  ])
+    return epic.library.filter(
+      (g) => !g.install?.is_dlc && !g.thirdPartyManagedApp
+    )
+  }, [epic.library])
 
   const visibleGames = useMemo(() => {
     // reset card refs to rebuild them
@@ -169,15 +143,7 @@ export default function ConsoleMode() {
         key: 'legendary',
         label: 'Epic',
         enabled: storesWithGames.has('legendary')
-      },
-      { key: 'gog', label: 'GOG', enabled: storesWithGames.has('gog') },
-      { key: 'nile', label: 'Amazon', enabled: storesWithGames.has('nile') },
-      {
-        key: 'sideload',
-        label: t('console.filter.sideload', 'Other'),
-        enabled: storesWithGames.has('sideload')
-      },
-      { key: 'zoom', label: 'ZOOM', enabled: storesWithGames.has('zoom') }
+      }
     ],
     [t, storesWithGames, allGames.length]
   )
@@ -268,13 +234,11 @@ export default function ConsoleMode() {
     if (!updateNoticeGame) return
     const game = updateNoticeGame
     setUpdateNoticeGame(null)
-    if (game.runner !== 'sideload') {
-      void updateGame({
-        appName: game.app_name,
-        runner: game.runner as Runner,
-        gameInfo: game
-      })
-    }
+    void updateGame({
+      appName: game.app_name,
+      runner: game.runner,
+      gameInfo: game
+    })
   }, [updateNoticeGame])
 
   const handleLaunchWithoutUpdate = useCallback(() => {

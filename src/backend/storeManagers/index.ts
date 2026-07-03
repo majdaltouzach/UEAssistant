@@ -1,8 +1,4 @@
-import SideloadLibraryManager from 'backend/storeManagers/sideload/library'
-import GOGLibraryManager from 'backend/storeManagers/gog/library'
 import LegendaryLibraryManager from 'backend/storeManagers/legendary/library'
-import NileLibraryManager from 'backend/storeManagers/nile/library'
-import ZoomLibraryManager from 'backend/storeManagers/zoom/library'
 
 import { logInfo, RunnerToLogPrefixMap } from 'backend/logger'
 import { addToQueue } from 'backend/downloadmanager/downloadqueue'
@@ -11,11 +7,7 @@ import type { DMQueueElement, GameInfo, Runner } from 'common/types'
 import type { LibraryManager } from 'common/types/game_manager'
 
 export const libraryManagerMap = {
-  sideload: new SideloadLibraryManager(),
-  gog: new GOGLibraryManager(),
-  legendary: new LegendaryLibraryManager(),
-  nile: new NileLibraryManager(),
-  zoom: new ZoomLibraryManager()
+  legendary: new LegendaryLibraryManager()
 } satisfies Record<Runner, LibraryManager>
 
 function getDMElement(gameInfo: GameInfo, appName: string) {

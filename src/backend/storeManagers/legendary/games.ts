@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync } from 'graceful-fs'
+import { existsSync } from 'graceful-fs'
 import axios from 'axios'
 
 import {
@@ -20,7 +20,6 @@ import {
   moveOnWindows,
   sendGameStatusUpdate,
   sendProgressUpdate,
-  shutdownWine,
   spawnAsync
 } from '../../utils'
 import {
@@ -31,13 +30,10 @@ import {
 } from 'backend/logger'
 import {
   prepareLaunch,
-  prepareWineLaunch,
   setupEnvVars,
   setupWrapperEnvVars,
   setupWrappers,
-  launchCleanup,
-  getKnownFixesEnvVariables,
-  getWinePath
+  launchCleanup
 } from '../../launcher'
 import {
   addShortcuts as addShortcutsUtil,
@@ -54,25 +50,19 @@ import { Catalog, Product } from 'common/types/epic-graphql'
 import { sendFrontendMessage } from '../../ipc'
 import { Game } from 'common/types/game_manager'
 import {
-  AllowedWineFlags,
-  getWineFlags,
-  isUmuSupported
-} from 'backend/utils/compatibility_layers'
-import {
   LegendaryAppName,
   LegendaryPlatform,
   NonEmptyString,
   PositiveInteger
 } from './commands/base'
 import { LegendaryCommand } from './commands'
-import { getUmuId } from 'backend/wiki_game_info/umu/utils'
+import LaunchCommand from './commands/launch'
 import thirdParty from './thirdParty'
 import { Path } from 'backend/schemas'
 import { mkdirSync } from 'fs'
 import { configStore } from 'backend/constants/key_value_stores'
 import { epicRedistPath, legendaryInstalled } from './constants'
 import { isCLINoGui, isMac, isWindows } from 'backend/constants/environment'
-import { fakeEpicExePath } from 'backend/constants/paths'
 
 import type LogWriter from 'backend/logger/log_writer'
 
@@ -886,10 +876,6 @@ export default class LegendaryGame implements Game {
       success: launchPrepSuccess,
       failureReason: launchPrepFailReason,
       rpcClient,
-      mangoHudCommand,
-      gameModeBin,
-      gameScopeCommand,
-      steamRuntime,
       offlineMode
     } = await prepareLaunch(gameSettings, logWriter, gameInfo, this.isNative())
     if (!launchPrepSuccess) {
@@ -906,81 +892,17 @@ export default class LegendaryGame implements Game {
     const languageCode =
       gameSettings.language || configStore.get('language', '')
 
-    let commandEnv = {
+    const commandEnv = {
       ...process.env,
       ...setupWrapperEnvVars({ appName: this.appName, appRunner: 'legendary' }),
-      ...setupEnvVars(gameSettings, gameInfo.install.install_path),
-      ...getKnownFixesEnvVariables(this.appName, 'legendary')
+      ...setupEnvVars(gameSettings, gameInfo.install.install_path)
     }
 
-    // Use the wrapper EXE to launch games.
-    if (
-      ![undefined, '0', 'false'].includes(commandEnv['USE_FAKE_EPIC_EXE']) &&
-      existsSync(fakeEpicExePath)
-    ) {
-      if (isWindows) {
-        commandEnv['LEGENDARY_WRAPPER_EXE'] = fakeEpicExePath
-      } else {
-        // on linux and mac, we copy the fake exe
-        const fakeExeWinPath = 'C:\\windows\\command\\EpicGamesLauncher.exe'
-        const fakeEpicExePathInPrefix = await getWinePath({
-          path: fakeExeWinPath,
-          gameSettings,
-          variant: 'unix'
-        })
+    const wrappers = setupWrappers(gameSettings)
 
-        // we copy the file inside the prefix to avoid permission issues
-        if (!existsSync(fakeEpicExePathInPrefix))
-          copyFileSync(fakeEpicExePath, fakeEpicExePathInPrefix)
-        commandEnv['LEGENDARY_WRAPPER_EXE'] = fakeExeWinPath
-      }
-    }
-
-    const wrappers = setupWrappers(
-      gameSettings,
-      mangoHudCommand,
-      gameModeBin,
-      gameScopeCommand,
-      steamRuntime?.length ? [...steamRuntime] : undefined
-    )
-
-    let wineFlags: AllowedWineFlags = wrappers.length
+    const wineFlags: Pick<LaunchCommand, '--wrapper'> = wrappers.length
       ? { '--wrapper': NonEmptyString.parse(shlex.join(wrappers)) }
       : {}
-
-    if (!this.isNative()) {
-      // -> We're using Wine/Proton on Linux or CX on Mac
-      const {
-        success: wineLaunchPrepSuccess,
-        failureReason: wineLaunchPrepFailReason,
-        envVars: wineEnvVars
-      } = await prepareWineLaunch(this, logWriter)
-      if (!wineLaunchPrepSuccess) {
-        logWriter.logError(['Launch aborted:', wineLaunchPrepFailReason])
-        if (wineLaunchPrepFailReason) {
-          showDialogBoxModalAuto({
-            title: t('box.error.launchAborted', 'Launch aborted'),
-            message: wineLaunchPrepFailReason,
-            type: 'ERROR'
-          })
-        }
-        return false
-      }
-
-      commandEnv = {
-        ...commandEnv,
-        ...wineEnvVars
-      }
-
-      if (await isUmuSupported(gameSettings)) {
-        const umuId = await getUmuId(gameInfo.app_name, gameInfo.runner)
-        if (umuId) {
-          commandEnv['GAMEID'] = umuId
-        }
-      }
-
-      wineFlags = await getWineFlags(gameSettings, shlex.join(wrappers))
-    }
 
     const appNameToLaunch =
       launchArguments?.type === 'dlc'
@@ -993,7 +915,7 @@ export default class LegendaryGame implements Game {
         ? launchArguments.parameters
         : undefined
 
-    const command: LegendaryCommand = {
+    const command: LaunchCommand = {
       subcommand: 'launch',
       appName: LegendaryAppName.parse(appNameToLaunch),
       extraArguments: [...args, launchArgumentArgs, gameSettings.launcherArgs]
@@ -1077,18 +999,13 @@ export default class LegendaryGame implements Game {
 
   // Could be removed if legendary handles SIGKILL and SIGTERM for us
   // which is send via AbortController
-  async stop(stopWine = true) {
+  async stop() {
     // until the legendary bug gets fixed, kill legendary on mac
     // not a perfect solution but it's the only choice for now
 
     // @adityaruplaha: this is kinda arbitary and I don't understand it.
     const pattern = isWindows ? 'legendary' : this.appName
     killPattern(pattern)
-
-    if (stopWine && !this.isNative()) {
-      const gameSettings = await this.getSettings()
-      await shutdownWine(gameSettings)
-    }
   }
 
   async isGameAvailable(): Promise<boolean> {

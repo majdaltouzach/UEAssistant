@@ -11,12 +11,7 @@ import { getMemoryInfo } from './memory'
 import { getOsInfo } from './osInfo'
 import { getSteamDeckInfo, type SteamDeckInfo } from './steamDeck'
 import { getHeroicVersion } from './heroicVersion'
-import {
-  getCometVersion,
-  getGogdlVersion,
-  getLegendaryVersion,
-  getNileVersion
-} from '../helperBinaries'
+import { getLegendaryVersion } from '../helperBinaries'
 
 type GPUInfo = {
   // The PCI device ID of the graphics card (hexadecimal)
@@ -59,9 +54,6 @@ interface SystemInformation {
   softwareInUse: {
     heroicVersion: string
     legendaryVersion: string
-    gogdlVersion: string
-    cometVersion: string
-    nileVersion: string
   }
 }
 
@@ -79,13 +71,7 @@ async function getSystemInfo(cache = true): Promise<SystemInformation> {
   const gpus = await getGpuInfo()
   const detailedOsInfo = await getOsInfo()
   const deckInfo = getSteamDeckInfo(cpus, gpus)
-  const [legendaryVersion, gogdlVersion, cometVersion, nileVersion] =
-    await Promise.all([
-      getLegendaryVersion(),
-      getGogdlVersion(),
-      getCometVersion(),
-      getNileVersion()
-    ])
+  const legendaryVersion = await getLegendaryVersion()
 
   const sysinfo: SystemInformation = {
     CPU: {
@@ -111,10 +97,7 @@ async function getSystemInfo(cache = true): Promise<SystemInformation> {
     isAppImage: !!process.env.APPIMAGE,
     softwareInUse: {
       heroicVersion: getHeroicVersion(),
-      legendaryVersion: legendaryVersion,
-      gogdlVersion: gogdlVersion,
-      cometVersion: cometVersion,
-      nileVersion: nileVersion
+      legendaryVersion: legendaryVersion
     }
   }
   cachedSystemInfo = sysinfo
@@ -148,10 +131,7 @@ We are${info.isAppImage ? '' : ' not'} running from an AppImage
 }
 Software Versions:
   Heroic: ${info.softwareInUse.heroicVersion}
-  Legendary: ${info.softwareInUse.legendaryVersion}
-  gogdl: ${info.softwareInUse.gogdlVersion}
-  comet: ${info.softwareInUse.cometVersion}
-  Nile: ${info.softwareInUse.nileVersion}`
+  Legendary: ${info.softwareInUse.legendaryVersion}`
 }
 
 export { getSystemInfo, formatSystemInfo }

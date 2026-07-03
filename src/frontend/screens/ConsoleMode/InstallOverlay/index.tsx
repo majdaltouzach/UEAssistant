@@ -4,11 +4,11 @@ import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 
 import './index.scss'
 
-import { install, writeConfig } from 'frontend/helpers'
+import { install } from 'frontend/helpers'
 import { hasProgress } from 'frontend/hooks/hasProgress'
 import ContextProvider from 'frontend/state/ContextProvider'
 
-import type { GameInfo, InstallPlatform, WineInstallation } from 'common/types'
+import type { GameInfo, InstallPlatform } from 'common/types'
 
 import { BTN_ACTION, BTN_BACK } from '../controller'
 import { useGamepadButtonPress } from '../hooks'
@@ -18,7 +18,7 @@ type PlatformOption = {
   label: string
 }
 
-type FocusKey = 'platform' | 'wine' | 'cancel' | 'install'
+type FocusKey = 'platform' | 'cancel' | 'install'
 
 export default function InstallOverlay({
   game,
@@ -31,28 +31,19 @@ export default function InstallOverlay({
   const { platform } = useContext(ContextProvider)
   const [progress] = hasProgress(game.app_name, game.runner)
 
-  const isWin = platform === 'win32'
   const isMac = platform === 'darwin'
-  const isLinux = platform === 'linux'
-  const isSideload = game.runner === 'sideload'
 
   const availablePlatforms = useMemo<PlatformOption[]>(() => {
     const options: PlatformOption[] = []
-    if (isLinux && (isSideload || game.is_linux_native)) {
-      options.push({ value: 'linux', label: 'Linux' })
-    }
-    if (isMac && (isSideload || game.is_mac_native)) {
+    if (isMac && game.is_mac_native) {
       options.push({ value: 'Mac', label: 'macOS' })
     }
-    // Windows is always installable (via Wine/Proton when not on Windows).
     options.push({ value: 'Windows', label: 'Windows' })
     return options
-  }, [isLinux, isMac, isSideload, game.is_linux_native, game.is_mac_native])
+  }, [isMac, game.is_mac_native])
 
   const defaultPlatform: InstallPlatform =
-    (isMac && game.is_mac_native && 'Mac') ||
-    (isLinux && game.is_linux_native && 'linux') ||
-    'Windows'
+    (isMac && game.is_mac_native && 'Mac') || 'Windows'
 
   const [platformIndex, setPlatformIndex] = useState(() => {
     const idx = availablePlatforms.findIndex((p) => p.value === defaultPlatform)
@@ -60,11 +51,6 @@ export default function InstallOverlay({
   })
   const platformToInstall =
     availablePlatforms[platformIndex]?.value ?? 'Windows'
-  const hasWine = platformToInstall === 'Windows' && !isWin
-
-  const [wineList, setWineList] = useState<WineInstallation[]>([])
-  const [wineIndex, setWineIndex] = useState(0)
-  const wineVersion = hasWine ? wineList[wineIndex] : undefined
 
   const [installPath, setInstallPath] = useState<string>('')
 
@@ -89,26 +75,12 @@ export default function InstallOverlay({
     return () => document.body.classList.remove('console-modal-open')
   }, [])
 
-  useEffect(() => {
-    if (!hasWine) return
-    let cancelled = false
-    void window.api.getAlternativeWine().then((list) => {
-      if (cancelled) return
-      setWineList(list)
-      setWineIndex(0)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [hasWine])
-
   const visibleRows = useMemo<FocusKey[]>(() => {
     const rows: FocusKey[] = []
     if (availablePlatforms.length > 1) rows.push('platform')
-    if (hasWine) rows.push('wine')
     rows.push('cancel', 'install')
     return rows
-  }, [availablePlatforms.length, hasWine])
+  }, [availablePlatforms.length])
 
   useEffect(() => {
     if (!visibleRows.includes(focused)) setFocused('install')
@@ -132,17 +104,9 @@ export default function InstallOverlay({
     }
 
   const cyclePlatform = cycle(availablePlatforms.length, setPlatformIndex)
-  const cycleWine = cycle(wineList.length, setWineIndex)
 
   const installGame = async () => {
     try {
-      if (!isWin && wineVersion) {
-        const gameSettings = await window.api.requestGameSettings(game.app_name)
-        await writeConfig({
-          appName: game.app_name,
-          config: { ...gameSettings, wineVersion }
-        })
-      }
       void install({
         gameInfo: game,
         previousProgress: null,
@@ -166,7 +130,6 @@ export default function InstallOverlay({
     focused,
     visibleRows,
     cyclePlatform,
-    cycleWine,
     installGame,
     onDismiss
   })
@@ -174,7 +137,6 @@ export default function InstallOverlay({
     focused,
     visibleRows,
     cyclePlatform,
-    cycleWine,
     installGame,
     onDismiss
   }
@@ -207,12 +169,6 @@ export default function InstallOverlay({
           h.cyclePlatform(delta)
           return
         }
-        if (h.focused === 'wine') {
-          e.preventDefault()
-          e.stopPropagation()
-          h.cycleWine(delta)
-          return
-        }
         if (h.focused === 'cancel' || h.focused === 'install') {
           e.preventDefault()
           e.stopPropagation()
@@ -241,10 +197,6 @@ export default function InstallOverlay({
   useGamepadButtonPress(BTN_BACK, onDismiss)
 
   const showPlatform = availablePlatforms.length > 1
-  const wineLabel =
-    wineList.length > 0
-      ? (wineVersion?.name ?? t('console.install.wineMissing', 'Not selected'))
-      : t('console.install.wineLoading', 'Loading…')
 
   return (
     <div className="consoleInstallOverlay" role="dialog" aria-live="polite">
@@ -263,17 +215,6 @@ export default function InstallOverlay({
               value={availablePlatforms[platformIndex]?.label ?? ''}
               onPrev={() => cyclePlatform(-1)}
               onNext={() => cyclePlatform(1)}
-            />
-          )}
-          {hasWine && (
-            <SelectorRow
-              focused={focused === 'wine'}
-              onFocus={() => setFocused('wine')}
-              label={t('console.install.wine', 'Wine')}
-              value={wineLabel}
-              onPrev={() => cycleWine(-1)}
-              onNext={() => cycleWine(1)}
-              disabled={wineList.length <= 1}
             />
           )}
           <div className="consoleInstallRow">
@@ -306,7 +247,6 @@ export default function InstallOverlay({
             onClick={() => void installGame()}
             onMouseEnter={() => setFocused('install')}
             onFocus={() => setFocused('install')}
-            disabled={hasWine && !wineVersion}
           >
             {t('generic.install', 'Install')}
           </button>

@@ -8,7 +8,6 @@ import {
   HiddenGame,
   RefreshOptions,
   Runner,
-  WineVersionInfo,
   LibraryTopSectionOptions,
   ExperimentalFeatures,
   Status
@@ -24,22 +23,8 @@ import { i18n, t, TFunction } from 'i18next'
 
 import ContextProvider from './ContextProvider'
 
-import {
-  configStore,
-  gogConfigStore,
-  gogInstalledGamesStore,
-  gogLibraryStore,
-  libraryStore,
-  nileConfigStore,
-  nileLibraryStore,
-  wineDownloaderInfoStore,
-  sideloadLibrary,
-  zoomConfigStore,
-  zoomInstalledGamesStore,
-  zoomLibraryStore
-} from '../helpers/electronStores'
+import { configStore, libraryStore } from '../helpers/electronStores'
 import { IpcRendererEvent } from 'electron'
-import { NileRegisterData } from 'common/types/nile'
 import useGlobalState from './GlobalStateV2'
 
 const storage: Storage = window.localStorage
@@ -60,21 +45,6 @@ interface StateProps {
     library: GameInfo[]
     username?: string
   }
-  gog: {
-    library: GameInfo[]
-    username?: string
-  }
-  amazon: {
-    library: GameInfo[]
-    user_id?: string
-    username?: string
-  }
-  zoom: {
-    library: GameInfo[]
-    username?: string
-    enabled: boolean
-  }
-  wineVersions: WineVersionInfo[]
   error: boolean
   gameUpdates: string[]
   language: string
@@ -101,7 +71,6 @@ interface StateProps {
   connectivity: { status: ConnectivityStatus; retryIn: number }
   dialogModalOptions: DialogModalOptions
   externalLinkDialogOptions: ExternalLinkDialogOptions
-  sideloadedLibrary: GameInfo[]
   hideChangelogsOnStartup: boolean
   lastChangelogShown: string | null
   showInstallModal: {
@@ -150,68 +119,11 @@ class GlobalState extends PureComponent<Props> {
     return applyGameOverrides(games, overrides)
   }
 
-  loadGOGLibrary = (
-    overrides: Record<string, GameOverride> = currentOverrides()
-  ): Array<GameInfo> => {
-    const games = gogLibraryStore.get('games', [])
-
-    const installedGames = gogInstalledGamesStore.get('installed', [])
-    for (const game of games) {
-      for (const installedGame of installedGames) {
-        if (installedGame.appName === game.app_name) {
-          game.install = installedGame
-          game.is_installed = true
-        }
-      }
-    }
-
-    return applyGameOverrides(games, overrides)
-  }
-  loadAmazonLibrary = (
-    overrides: Record<string, GameOverride> = currentOverrides()
-  ): Array<GameInfo> => {
-    const games = nileLibraryStore.get('library', [])
-
-    return applyGameOverrides(games, overrides)
-  }
-
-  loadZoomLibrary = (
-    overrides: Record<string, GameOverride> = currentOverrides()
-  ): Array<GameInfo> => {
-    const games = zoomLibraryStore.get('games', [])
-    const installedGames = zoomInstalledGamesStore.get('installed', [])
-    for (const game of games) {
-      const igame = installedGames.find(
-        (igame) => igame.appName === game.app_name
-      )
-      if (igame) {
-        game.install = igame
-        game.is_installed = true
-      }
-    }
-    return applyGameOverrides(games, overrides)
-  }
-
   state: StateProps = {
     epic: {
       library: this.loadLegendaryLibrary(),
       username: configStore.get_nodefault('userInfo.displayName')
     },
-    gog: {
-      library: this.loadGOGLibrary(),
-      username: gogConfigStore.get_nodefault('userData.username')
-    },
-    amazon: {
-      library: this.loadAmazonLibrary(),
-      user_id: nileConfigStore.get_nodefault('userData.user_id'),
-      username: nileConfigStore.get_nodefault('userData.name')
-    },
-    zoom: {
-      library: this.loadZoomLibrary(),
-      username: zoomConfigStore.get_nodefault('username'),
-      enabled: !!globalSettings?.experimentalFeatures?.zoomPlatform
-    },
-    wineVersions: wineDownloaderInfoStore.get('wine-releases', []),
     error: false,
     gameUpdates: [],
     language: this.props.i18n.language,
@@ -252,7 +164,6 @@ class GlobalState extends PureComponent<Props> {
       runner: 'legendary',
       gameInfo: null
     },
-    sideloadedLibrary: applyGameOverrides(sideloadLibrary.get('games', [])),
     dialogModalOptions: { showDialog: false },
     externalLinkDialogOptions: { showDialog: false },
     hideChangelogsOnStartup: globalSettings?.hideChangelogsOnStartup || false,
@@ -260,8 +171,6 @@ class GlobalState extends PureComponent<Props> {
     helpItems: {},
     experimentalFeatures: {
       enableHelp: false,
-      cometSupport: true,
-      zoomPlatform: false,
       ...(globalSettings?.experimentalFeatures || {})
     },
     disableDialogBackdropClose: configStore.get(
@@ -521,8 +430,7 @@ class GlobalState extends PureComponent<Props> {
 
   handleExperimentalFeatures = (value: ExperimentalFeatures) => {
     this.setState({
-      experimentalFeatures: value,
-      zoom: { ...this.state.zoom, enabled: value }
+      experimentalFeatures: value
     })
   }
 
@@ -567,126 +475,13 @@ class GlobalState extends PureComponent<Props> {
     window.location.reload()
   }
 
-  gogLogin = async (token: string) => {
-    console.log('logging gog')
-    const response = await window.api.authGOG(token)
-
-    if (response.status === 'done') {
-      this.setState({
-        gog: {
-          library: [],
-          username: response.data?.username
-        }
-      })
-
-      this.handleSuccessfulLogin('gog')
-    }
-
-    return response.status
-  }
-
-  gogLogout = async () => {
-    window.api.logoutGOG()
-    this.setState({
-      gog: {
-        library: [],
-        username: null
-      }
-    })
-    console.log('Logging out from gog')
-    window.location.reload()
-  }
-
-  amazonLogin = async (data: NileRegisterData) => {
-    console.log('logging amazon')
-    const response = await window.api.authAmazon(data)
-
-    if (response.status === 'done') {
-      this.setState({
-        amazon: {
-          library: [],
-          user_id: response.user?.user_id,
-          username: response.user?.name
-        }
-      })
-
-      this.handleSuccessfulLogin('nile')
-    }
-
-    return response.status
-  }
-
-  amazonLogout = async () => {
-    await window.api.logoutAmazon()
-    this.setState({
-      amazon: {
-        library: [],
-        user_id: null,
-        username: null
-      }
-    })
-    console.log('Logging out from amazon')
-    window.location.reload()
-  }
-
-  getAmazonLoginData = async () => window.api.getAmazonLoginData()
-
-  zoomLogin = async (url: string) => {
-    console.log('logging zoom')
-    const response = await window.api.authZoom(url)
-
-    if (response.status === 'done') {
-      const userInfo = await window.api.getZoomUserInfo()
-      this.setState({
-        zoom: {
-          library: [],
-          username: userInfo?.username,
-          enabled: true
-        }
-      })
-
-      this.handleSuccessfulLogin('zoom')
-    }
-
-    return response.status
-  }
-
-  zoomLogout = async () => {
-    window.api.logoutZoom()
-    this.setState({
-      zoom: {
-        library: [],
-        username: null,
-        enabled: true
-      }
-    })
-    console.log('Logging out from zoom')
-    window.location.reload()
-  }
-
   updateGameOverrides = (overrides: Record<string, GameOverride>) => {
     useGlobalState.getState().setGameOverrides(overrides)
     this.setState({
       epic: {
         ...this.state.epic,
         library: this.loadLegendaryLibrary(overrides)
-      },
-      gog: {
-        ...this.state.gog,
-        library: this.loadGOGLibrary(overrides)
-      },
-      zoom: {
-        ...this.state.zoom,
-        library: this.loadZoomLibrary(overrides)
-      },
-      amazon: {
-        ...this.state.amazon,
-        library: this.loadAmazonLibrary(overrides)
-      },
-      sideloadedLibrary: applyGameOverrides(
-        sideloadLibrary.get('games', []),
-        overrides
-      )
+      }
     })
   }
 
@@ -697,7 +492,7 @@ class GlobalState extends PureComponent<Props> {
   ): Promise<void> => {
     console.log('refreshing')
 
-    const { epic, gog, amazon, zoom, gameUpdates } = this.state
+    const { epic, gameUpdates } = this.state
 
     const overrides = overridesArg || currentOverrides()
 
@@ -719,55 +514,14 @@ class GlobalState extends PureComponent<Props> {
       epicLibrary = legendaryLibrary
     }
 
-    let gogLibrary = this.loadGOGLibrary(overrides)
-    if (gog.username && (!gogLibrary.length || !gog.library.length)) {
-      window.api.logInfo('No cache found, getting data from gog...')
-      await window.api.refreshLibrary('gog')
-      gogLibrary = this.loadGOGLibrary(overrides)
-    }
-
-    let zoomLibrary: GameInfo[] = []
-    if (zoom.enabled) {
-      zoomLibrary = this.loadZoomLibrary(overrides)
-      if (zoom.username && (!zoomLibrary.length || !zoom.library.length)) {
-        window.api.logInfo('No cache found, getting data from zoom...')
-        await window.api.refreshLibrary('zoom')
-        zoomLibrary = this.loadZoomLibrary(overrides)
-      }
-    }
-
-    let amazonLibrary = nileLibraryStore.get('library', [])
-    if (amazon.user_id && (!amazonLibrary.length || !amazon.library.length)) {
-      window.api.logInfo('No cache found, getting data from nile...')
-      await window.api.refreshLibrary('nile')
-      amazonLibrary = this.loadAmazonLibrary(overrides)
-    }
-
-    const updatedSideload = sideloadLibrary.get('games', [])
-
     this.setState({
       epic: {
         library: applyGameOverrides(epicLibrary, overrides),
         username: epic.username
       },
-      gog: {
-        library: gogLibrary,
-        username: gog.username
-      },
-      zoom: {
-        library: zoomLibrary,
-        username: zoom.username,
-        enabled: zoom.enabled
-      },
-      amazon: {
-        library: amazonLibrary,
-        user_id: amazon.user_id,
-        username: amazon.username
-      },
       gameUpdates: updates,
       refreshing: false,
-      refreshingInTheBackground: true,
-      sideloadedLibrary: applyGameOverrides(updatedSideload, overrides)
+      refreshingInTheBackground: true
     })
 
     if (currentLibraryLength !== epicLibrary.length) {
@@ -835,7 +589,6 @@ class GlobalState extends PureComponent<Props> {
         'playing',
         'extracting',
         'launching',
-        'winetricks',
         'redist',
         'queued'
       ].includes(status)
@@ -879,15 +632,7 @@ class GlobalState extends PureComponent<Props> {
   }
 
   async componentDidMount() {
-    const {
-      epic,
-      gog,
-      amazon,
-      zoom,
-      gameUpdates = [],
-      libraryStatus,
-      platform
-    } = this.state
+    const { epic, gameUpdates = [], libraryStatus, platform } = this.state
 
     window.api.handleInstallGame(async (e, appName, runner) => {
       const currentApp = libraryStatus.filter(
@@ -895,7 +640,7 @@ class GlobalState extends PureComponent<Props> {
       )[0]
       if (!currentApp || (currentApp && currentApp.status !== 'installing')) {
         const gameInfo = await getGameInfo(appName, runner)
-        if (!gameInfo || gameInfo.runner === 'sideload') {
+        if (!gameInfo) {
           return
         }
         return this.setState({
@@ -927,41 +672,19 @@ class GlobalState extends PureComponent<Props> {
 
     window.api.handleGamePush((e: IpcRendererEvent, args: GameInfo) => {
       if (!args.app_name) return
-      if (args.runner === 'gog') {
-        const library = [...this.state.gog.library]
-        const index = library.findIndex(
-          (game) => game.app_name === args.app_name
-        )
-        if (index !== -1) {
-          library[index] = args
-        } else {
-          library.push(args)
-        }
-        this.setState({
-          gog: {
-            library: [...library],
-            username: this.state.gog.username
-          }
-        })
-      } else if (args.runner === 'zoom') {
-        // Handle Zoom game push
-        const library = [...this.state.zoom.library]
-        const index = library.findIndex(
-          (game) => game.app_name === args.app_name
-        )
-        if (index !== -1) {
-          library[index] = args
-        } else {
-          library.push(args)
-        }
-        this.setState({
-          zoom: {
-            library: [...library],
-            username: this.state.zoom.username,
-            enabled: true
-          }
-        })
+      const library = [...this.state.epic.library]
+      const index = library.findIndex((game) => game.app_name === args.app_name)
+      if (index !== -1) {
+        library[index] = args
+      } else {
+        library.push(args)
       }
+      this.setState({
+        epic: {
+          library: [...library],
+          username: this.state.epic.username
+        }
+      })
     })
 
     if (platform === 'darwin') {
@@ -979,20 +702,9 @@ class GlobalState extends PureComponent<Props> {
     )
 
     const legendaryUser = configStore.has('userInfo')
-    const gogUser = gogConfigStore.has('userData')
-    const amazonUser = nileConfigStore.has('userData')
-    const zoomUser = zoomConfigStore.has('isLoggedIn')
 
     if (legendaryUser) {
       await window.api.getUserInfo()
-    }
-
-    if (amazonUser) {
-      await window.api.getAmazonUserInfo()
-    }
-
-    if (zoom.enabled && zoomUser) {
-      await window.api.getZoomUserInfo()
     }
 
     if (!gameUpdates.length) {
@@ -1000,14 +712,10 @@ class GlobalState extends PureComponent<Props> {
       this.setState({ gameUpdates: storedGameUpdates })
     }
 
-    if (legendaryUser || gogUser || amazonUser || (zoom.enabled && zoomUser)) {
+    if (legendaryUser) {
       this.refreshLibrary({
         checkForUpdates: true,
-        runInBackground:
-          epic.library.length !== 0 ||
-          gog.library.length !== 0 ||
-          amazon.library.length !== 0 ||
-          ((this.state.zoom.enabled && zoom.library) || []).length !== 0
+        runInBackground: epic.library.length !== 0
       })
     }
 
@@ -1062,7 +770,6 @@ class GlobalState extends PureComponent<Props> {
       'launching',
       'playing',
       'redist',
-      'winetricks',
       'extracting',
       'repairing',
       'moving',
@@ -1102,9 +809,6 @@ class GlobalState extends PureComponent<Props> {
     const {
       language,
       epic,
-      gog,
-      amazon,
-      zoom,
       favouriteGames,
       customCategories,
       hiddenGames,
@@ -1127,27 +831,6 @@ class GlobalState extends PureComponent<Props> {
             username: epic.username,
             login: this.epicLogin,
             logout: this.epicLogout
-          },
-          gog: {
-            library: gog.library,
-            username: gog.username,
-            login: this.gogLogin,
-            logout: this.gogLogout
-          },
-          amazon: {
-            library: amazon.library,
-            user_id: amazon.user_id,
-            username: amazon.username,
-            getLoginData: this.getAmazonLoginData,
-            login: this.amazonLogin,
-            logout: this.amazonLogout
-          },
-          zoom: {
-            library: this.state.zoom.enabled ? zoom.library : [],
-            username: this.state.zoom.enabled ? zoom.username : undefined,
-            login: this.zoomLogin,
-            logout: this.zoomLogout,
-            enabled: this.state.zoom.enabled
           },
           installingEpicGame,
           setLanguage: this.setLanguage,

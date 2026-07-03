@@ -7,7 +7,7 @@ import { getStatusLabel, handleNonAvailableGames } from './constants'
 
 export function hasStatus(gameInfo: GameInfo, gameSize?: string) {
   const appName = gameInfo.app_name
-  const { libraryStatus, epic, gog } = React.useContext(ContextProvider)
+  const { libraryStatus, epic } = React.useContext(ContextProvider)
   const [progress] = hasProgress(gameInfo.app_name, gameInfo.runner)
   const [newGameInfo, setNewGameInfo] = React.useState<GameInfo | undefined>(
     gameInfo
@@ -24,7 +24,7 @@ export function hasStatus(gameInfo: GameInfo, gameSize?: string) {
   const {
     thirdPartyManagedApp = undefined,
     is_installed,
-    runner = 'sideload',
+    runner = 'legendary',
     isEAManaged,
     isUbisoftManaged
   } = { ...newGameInfo }
@@ -36,7 +36,7 @@ export function hasStatus(gameInfo: GameInfo, gameSize?: string) {
     const getGameInfo = async () => {
       const updatedInfo = await window.api.getGameInfo(
         appName,
-        runner || 'sideload'
+        runner || 'legendary'
       )
       if (updatedInfo) {
         setNewGameInfo(updatedInfo)
@@ -106,14 +106,7 @@ export function hasStatus(gameInfo: GameInfo, gameSize?: string) {
       return setGameStatus({ status: 'notInstalled', label, statusContext })
     }
     checkGameStatus()
-  }, [
-    libraryStatus,
-    appName,
-    epic.library,
-    gog.library,
-    is_installed,
-    progress.percent
-  ])
+  }, [libraryStatus, appName, epic.library, is_installed, progress.percent])
 
   return gameStatus
 }

@@ -9,22 +9,10 @@ import {
   LibraryTopSectionOptions,
   DMQueueElement,
   DownloadManagerState,
-  ExperimentalFeatures,
-  GameSettings,
-  WikiInfo,
-  ExtraInfo,
-  Status,
-  InstallInfo
+  ExperimentalFeatures
 } from 'common/types'
-import { NileLoginData, NileRegisterData } from 'common/types/nile'
 
-export type Category =
-  | 'all'
-  | 'legendary'
-  | 'gog'
-  | 'sideload'
-  | 'nile'
-  | 'zoom'
+export type Category = 'all' | 'legendary'
 
 export interface ContextType {
   error: boolean
@@ -74,27 +62,6 @@ export interface ContextType {
     login: (sid: string) => Promise<string>
     logout: () => Promise<void>
   }
-  gog: {
-    library: GameInfo[]
-    username?: string
-    login: (token: string) => Promise<string>
-    logout: () => Promise<void>
-  }
-  amazon: {
-    library: GameInfo[]
-    user_id?: string
-    username?: string
-    getLoginData: () => Promise<NileLoginData>
-    login: (data: NileRegisterData) => Promise<string>
-    logout: () => Promise<void>
-  }
-  zoom: {
-    library: GameInfo[]
-    username?: string
-    login: (url: string) => Promise<string>
-    logout: () => Promise<void>
-    enabled: boolean
-  }
   installingEpicGame: boolean
   allTilesInColor: boolean
   setAllTilesInColor: (value: boolean) => void
@@ -111,7 +78,6 @@ export interface ContextType {
   showResetDialog: () => void
   externalLinkDialogOptions: ExternalLinkDialogOptions
   handleExternalLinkDialog: (options: ExternalLinkDialogOptions) => void
-  sideloadedLibrary: GameInfo[]
   hideChangelogsOnStartup: boolean
   setHideChangelogsOnStartup: (value: boolean) => void
   lastChangelogShown: string | null
@@ -204,94 +170,6 @@ export interface SettingsContextType {
   gameInfo?: GameInfo
   isMacNative: boolean
   isLinuxNative: boolean
-}
-
-export interface StoresFilters {
-  legendary: boolean
-  gog: boolean
-  nile: boolean
-  sideload: boolean
-  zoom: boolean
-}
-
-export interface PlatformsFilters {
-  win: boolean
-  linux: boolean
-  mac: boolean
-  browser: boolean
-}
-
-export interface LibraryContextType {
-  storesFilters: StoresFilters
-  platformsFilters: PlatformsFilters
-  filterText: string
-  setStoresFilters: (filters: StoresFilters) => void
-  setPlatformsFilters: (filters: PlatformsFilters) => void
-  handleLayout: (value: string) => void
-  handleSearch: (input: string) => void
-  layout: string
-  showHidden: boolean
-  setShowHidden: (value: boolean) => void
-  showFavourites: boolean
-  setShowFavourites: (value: boolean) => void
-  showInstalledOnly: boolean
-  setShowInstalledOnly: (value: boolean) => void
-  showNonAvailable: boolean
-  setShowNonAvailable: (value: boolean) => void
-  sortDescending: boolean
-  setSortDescending: (value: boolean) => void
-  sortInstalled: boolean
-  setSortInstalled: (value: boolean) => void
-  showSupportOfflineOnly: boolean
-  setShowSupportOfflineOnly: (value: boolean) => void
-  showThirdPartyManagedOnly: boolean
-  setShowThirdPartyManagedOnly: (value: boolean) => void
-  showUpdatesOnly: boolean
-  setShowUpdatesOnly: (value: boolean) => void
-  handleAddGameButtonClick: () => void
-  setShowCategories: (value: boolean) => void
-  showAlphabetFilter: boolean
-  onToggleAlphabetFilter: () => void
-  alphabetFilterLetter: string | null
-  setAlphabetFilterLetter: (letter: string | null) => void
-  gamesForAlphabetFilter: GameInfo[]
-}
-
-export interface GameContextType {
-  appName: string
-  runner: Runner
-  gameInfo: GameInfo | null
-  gameExtraInfo: ExtraInfo | null
-  gameSettings: GameSettings | null
-  gameInstallInfo: InstallInfo | null
-  is: {
-    installing: boolean
-    importing: boolean
-    installingWinetricksPackages: boolean
-    installingRedist: boolean
-    launching: boolean
-    linux: boolean
-    linuxNative: boolean
-    mac: boolean
-    macNative: boolean
-    moving: boolean
-    native: boolean
-    notAvailable: boolean
-    notInstallable: boolean
-    notSupportedGame: boolean
-    playing: boolean
-    queued: boolean
-    reparing: boolean
-    sideloaded: boolean
-    syncing: boolean
-    uninstalling: boolean
-    updating: boolean
-    win: boolean
-    notPlayableOffline: boolean
-  }
-  statusContext?: string
-  status: Status | undefined
-  wikiInfo: WikiInfo | null
 }
 
 export type DMQueue = {

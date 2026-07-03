@@ -19,7 +19,6 @@ import {
   TraySettings,
   UseDarkTrayIcon,
   UseFramelessWindow,
-  WinePrefixesBasePath,
   PlaytimeSync,
   AnalyticsOptIn
 } from '../../components'
@@ -36,8 +35,6 @@ export default function GeneralSettings() {
       <ThemeSelector />
 
       <DefaultInstallPath />
-
-      <WinePrefixesBasePath />
 
       <DefaultSteamPath />
 

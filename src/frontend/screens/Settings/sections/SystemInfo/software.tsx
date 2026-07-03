@@ -16,13 +16,7 @@ interface Props {
 function SoftwareInfo({ software }: Props) {
   const { t } = useTranslation()
 
-  const {
-    heroicVersion,
-    legendaryVersion,
-    gogdlVersion,
-    cometVersion,
-    nileVersion
-  } = software
+  const { heroicVersion, legendaryVersion } = software
 
   return (
     <Paper sx={{ padding: 1 }} square>
@@ -46,30 +40,6 @@ function SoftwareInfo({ software }: Props) {
             'settings.systemInformation.legendaryVersion',
             'Legendary: {{legendaryVersion}}',
             { legendaryVersion }
-          )}
-          <br />
-          {t(
-            'settings.systemInformation.gogdlVersion',
-            'Gogdl: {{gogdlVersion}}',
-            {
-              gogdlVersion
-            }
-          )}
-          <br />
-          {t(
-            'settings.systemInformation.cometVersion',
-            'Comet: {{cometVersion}}',
-            {
-              cometVersion
-            }
-          )}
-          <br />
-          {t(
-            'settings.systemInformation.nileVersion',
-            'Nile: {{nileVersion}}',
-            {
-              nileVersion
-            }
           )}
         </Grid>
       </Grid>

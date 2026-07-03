@@ -1,0 +1,32 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "UEAssistant",
+  "version": "0.1.0",
+  "identifier": "com.ueassistant.app",
+  "build": {
+    "frontendDist": "../build",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "pnpm --dir .. exec vite --config vite.renderer.config.ts",
+    "beforeBuildCommand": "pnpm --dir .. exec vite build --config vite.renderer.config.ts"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "UEAssistant",
+        "width": 1280,
+        "height": 800
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["deb", "appimage", "rpm"],
+    "icon": ["../public/icon.png"],
+    "resources": ["pkexec-wrapper.sh"]
+  }
+}

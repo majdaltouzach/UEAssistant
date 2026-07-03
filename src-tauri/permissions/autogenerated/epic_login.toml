@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-epic-login"
+description = "Enables the epic_login command without any pre-configured scope."
+commands.allow = ["epic_login"]
+
+[[permission]]
+identifier = "deny-epic-login"
+description = "Denies the epic_login command without any pre-configured scope."
+commands.deny = ["epic_login"]

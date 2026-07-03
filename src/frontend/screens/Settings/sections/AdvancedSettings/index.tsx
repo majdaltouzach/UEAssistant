@@ -15,21 +15,15 @@ import SettingsContext from '../../SettingsContext'
 import ContextProvider from 'frontend/state/ContextProvider'
 import { GameStatus } from 'common/types'
 import {
-  AllowInstallationBrokenAnticheat,
-  ShowValveProton,
-  AltGOGdlBin,
   AltLegendaryBin,
-  AltNileBin,
   ClearCache,
   CustomCSS,
   DisableLogs,
   DownloadNoHTTPS,
   ExperimentalFeatures,
   HideWindowOnProtocolLaunch,
-  ResetHeroic,
-  SteamGridDbApiKey
+  ResetHeroic
 } from '../../components'
-import DisableGOGPresence from '../../components/DisableGOGPresence'
 
 export default function AdvancedSetting() {
   const { config } = useContext(SettingsContext)
@@ -50,7 +44,6 @@ export default function AdvancedSetting() {
   const { libraryStatus, platform } = useContext(ContextProvider)
   const { t } = useTranslation()
   const isWindows = platform === 'win32'
-  const isLinux = platform === 'linux'
 
   useEffect(() => {
     // set copied to clipboard status to true if it's not already set to true
@@ -152,10 +145,10 @@ export default function AdvancedSetting() {
 
   async function toggleEosOverlay() {
     if (eosOverlayEnabledGlobally) {
-      await window.api.disableEosOverlay('')
+      await window.api.disableEosOverlay()
       setEosOverlayEnabledGlobally(false)
     } else {
-      const { wasEnabled } = await window.api.enableEosOverlay('')
+      const { wasEnabled } = await window.api.enableEosOverlay()
       setEosOverlayEnabledGlobally(wasEnabled)
     }
   }
@@ -172,28 +165,13 @@ export default function AdvancedSetting() {
     <div>
       <h3 className="settingSubheader">{t('settings.navbar.advanced')}</h3>
 
-      <div className="advancedSetting">
-        <SteamGridDbApiKey />
-        <hr />
-      </div>
-
       <AltLegendaryBin />
-
-      <AltGOGdlBin />
-
-      <AltNileBin />
 
       <DownloadNoHTTPS />
 
       <DisableLogs />
 
-      <DisableGOGPresence />
-
-      <AllowInstallationBrokenAnticheat />
-
       <HideWindowOnProtocolLaunch />
-
-      {isLinux && <ShowValveProton />}
 
       <hr />
 

@@ -189,7 +189,7 @@ const launch = async ({
               text: t('gamepage:box.yes'),
               onClick: async () => {
                 const gameInfo = await getGameInfo(appName, runner)
-                if (gameInfo && gameInfo.runner !== 'sideload') {
+                if (gameInfo) {
                   void updateGame({ appName, runner, gameInfo })
                   res({ status: 'done' })
                 }

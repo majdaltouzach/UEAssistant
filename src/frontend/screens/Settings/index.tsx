@@ -6,7 +6,6 @@ import { NavLink, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import ArrowCircleLeftIcon from '@mui/icons-material/ArrowCircleLeft'
 
-import ContextMenu from '../Library/components/ContextMenu'
 import SettingsContext from './SettingsContext'
 import LogSettings from './sections/LogSettings'
 import FooterInfo from './sections/FooterInfo'
@@ -17,18 +16,11 @@ import {
   AdvancedSettings,
   SystemInfo
 } from './sections'
-import { AppSettings, WineInstallation } from 'common/types'
+import { AppSettings } from 'common/types'
 import { UpdateComponent } from 'frontend/components/UI'
 import { SettingsContextType } from 'frontend/types'
 import useSettingsContext from 'frontend/hooks/useSettingsContext'
 import { hasHelp } from 'frontend/hooks/hasHelp'
-import { ContentCopy, FileOpen } from '@mui/icons-material'
-
-export const defaultWineVersion: WineInstallation = {
-  bin: '/usr/bin/wine',
-  name: 'Wine Default',
-  type: 'wine'
-}
 
 function Settings() {
   const { t } = useTranslation()
@@ -83,49 +75,26 @@ function Settings() {
   const title = t('globalSettings', 'Global Settings')
 
   return (
-    <ContextMenu
-      items={[
-        {
-          label: t(
-            'settings.copyToClipboard',
-            'Copy All Settings to Clipboard'
-          ),
-          onclick: async () =>
-            window.api.clipboardWriteText(
-              JSON.stringify({ appName, title, ...currentConfig })
-            ),
-          show: !isLogSettings,
-          icon: <ContentCopy />
-        },
-        {
-          label: t('settings.open-config-file', 'Open Config File'),
-          onclick: () => window.api.showConfigFileInFolder(appName),
-          show: !isLogSettings,
-          icon: <FileOpen />
-        }
-      ]}
-    >
-      <SettingsContext.Provider value={contextValues}>
-        <div className={`Settings ${type}`}>
-          <div role="list" className="settingsWrapper">
-            <NavLink to="/library" role="link" className="backButton">
-              <ArrowCircleLeftIcon />
-            </NavLink>
-            <h1 className="headerTitle" data-testid="headerTitle">
-              {title}
-            </h1>
+    <SettingsContext.Provider value={contextValues}>
+      <div className={`Settings ${type}`}>
+        <div role="list" className="settingsWrapper">
+          <NavLink to="/login" role="link" className="backButton">
+            <ArrowCircleLeftIcon />
+          </NavLink>
+          <h1 className="headerTitle" data-testid="headerTitle">
+            {title}
+          </h1>
 
-            {isGeneralSettings && <GeneralSettings />}
-            {isGamesSettings && <GamesSettings />}
-            {isSyncSettings && <SyncSaves />}
-            {isAdvancedSetting && <AdvancedSettings />}
-            {isLogSettings && <LogSettings />}
-            {isSystemInfo && <SystemInfo />}
-            <FooterInfo />
-          </div>
+          {isGeneralSettings && <GeneralSettings />}
+          {isGamesSettings && <GamesSettings />}
+          {isSyncSettings && <SyncSaves />}
+          {isAdvancedSetting && <AdvancedSettings />}
+          {isLogSettings && <LogSettings />}
+          {isSystemInfo && <SystemInfo />}
+          <FooterInfo />
         </div>
-      </SettingsContext.Provider>
-    </ContextMenu>
+      </div>
+    </SettingsContext.Provider>
   )
 }
 

@@ -116,7 +116,6 @@ describe('protocol.ts --no-gui behavior', () => {
   const mockGameSettings = {
     ignoreGameUpdates: false
   }
-  const emptyGameInfoMock = { getGameInfo: () => ({}) }
 
   beforeEach(() => {
     jest.clearAllMocks()
@@ -131,17 +130,6 @@ describe('protocol.ts --no-gui behavior', () => {
     ;(getMainWindow as jest.Mock).mockReturnValue(mockMainWindow)
     ;(libraryManagerMap.legendary.getGame as jest.Mock).mockReturnValue(
       gameMock
-    )
-
-    // Mock other game managers to return empty objects
-    ;(libraryManagerMap.gog.getGame as jest.Mock).mockReturnValue(
-      emptyGameInfoMock
-    )
-    ;(libraryManagerMap.nile.getGame as jest.Mock).mockReturnValue(
-      emptyGameInfoMock
-    )
-    ;(libraryManagerMap.sideload.getGame as jest.Mock).mockReturnValue(
-      emptyGameInfoMock
     )
   })
 
@@ -241,9 +229,9 @@ describe('protocol.ts --no-gui behavior', () => {
 
     test('should handle missing game info', async () => {
       // Mock gameManagerMap to return empty object for missing games
-      ;(libraryManagerMap.legendary.getGame as jest.Mock).mockReturnValue(
-        emptyGameInfoMock
-      )
+      ;(libraryManagerMap.legendary.getGame as jest.Mock).mockReturnValue({
+        getGameInfo: () => ({})
+      })
 
       await handleProtocol(['heroic://launch/nonexistent-game'])
 

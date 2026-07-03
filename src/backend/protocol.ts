@@ -12,7 +12,7 @@ import { Path } from './schemas'
 import { isCLINoGui } from './constants/environment'
 import { GlobalConfig } from './config'
 
-const RUNNERS = z.enum(['legendary', 'gog', 'nile', 'sideload'])
+const RUNNERS = z.enum(['legendary'])
 
 function parseHeroicUrl(args: string[]): URL | undefined {
   const urlStr = args.find((arg) => arg.startsWith('heroic://'))

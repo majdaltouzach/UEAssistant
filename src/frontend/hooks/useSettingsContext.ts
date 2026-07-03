@@ -24,8 +24,9 @@ const useSettingsContext = ({ appName, gameInfo, runner }: Props) => {
   const isMacNative =
     isMac &&
     (['Mac', 'osx'].includes(gameInfo?.install.platform ?? '') || false)
-  const isLinuxNative =
-    isLinux && (gameInfo?.install.platform === 'linux' || false)
+  // UEAssistant only launches native Linux binaries (no Wine), so on Linux
+  // everything is "native".
+  const isLinuxNative = isLinux
 
   // Load Heroic's or game's config, only if not loaded already
   useEffect(() => {

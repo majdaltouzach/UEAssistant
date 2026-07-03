@@ -1,25 +1,18 @@
 import {
   faBookOpen,
-  faGamepad,
   faSlidersH,
   faStore,
   faUser,
   faUniversalAccess,
   faCoffee,
   faUserAlt,
-  faWineGlass,
   faBarsProgress,
-  faTv,
-  faTags
+  faTv
 } from '@fortawesome/free-solid-svg-icons'
 import { useLocation } from 'react-router-dom'
 import { useContext } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  faDiscord,
-  faGithub,
-  faPatreon
-} from '@fortawesome/free-brands-svg-icons'
+import { faDiscord, faGithub } from '@fortawesome/free-brands-svg-icons'
 import { openDiscordLink } from 'frontend/helpers'
 
 import ContextProvider from 'frontend/state/ContextProvider'
@@ -34,38 +27,13 @@ export default function SidebarLinks() {
   const location = useLocation() as { pathname: string }
   const [, , type] = location.pathname.split('/') as PathSplit
 
-  const {
-    amazon,
-    epic,
-    gog,
-    zoom,
-    platform,
-    refreshLibrary,
-    handleExternalLinkDialog
-  } = useContext(ContextProvider)
+  const { epic, platform, handleExternalLinkDialog } =
+    useContext(ContextProvider)
 
-  const inWebviewScreen =
-    location.pathname.includes('store') ||
-    location.pathname.includes('last-url')
   const isSettings = location.pathname.includes('settings')
   const isWin = platform === 'win32'
 
-  const loggedIn =
-    epic.username || gog.username || amazon.user_id || zoom.username
-
-  async function handleRefresh() {
-    localStorage.setItem('scrollPosition', '0')
-
-    const shouldRefresh =
-      (epic.username && !epic.library.length) ||
-      (gog.username && !gog.library.length) ||
-      (amazon.user_id && !amazon.library.length) ||
-      (zoom.username && !zoom.library.length)
-    if (shouldRefresh) {
-      return refreshLibrary({ runInBackground: true })
-    }
-    return
-  }
+  const loggedIn = Boolean(epic.username)
 
   function handleExternalLink(linkCallback: () => void) {
     const showDialogSetting = localStorage.getItem(
@@ -82,31 +50,6 @@ export default function SidebarLinks() {
     }
   }
 
-  // By default, open Epic Store
-  let defaultStore = 'epic'
-  if (
-    zoom.enabled &&
-    !epic.username &&
-    !gog.username &&
-    !amazon.user_id &&
-    zoom.username
-  ) {
-    // Prioritize Zoom if only Zoom is logged in
-    defaultStore = 'zoom'
-  } else if (!epic.username && !gog.username && amazon.user_id) {
-    // If only logged in to Amazon Games, open Amazon Gaming
-    defaultStore = 'amazon'
-  } else if (!epic.username && gog.username) {
-    // Otherwise, if not logged in to Epic Games, open GOG Store
-    defaultStore = 'gog'
-  }
-
-  // if we have a stored last-url, default to the `/last-url` route
-  const lastStore = sessionStorage.getItem('last-store')
-  if (lastStore) {
-    defaultStore = lastStore
-  }
-
   return (
     <div className="SidebarLinks Sidebar__section" data-tour="sidebar-menu">
       {!loggedIn && (
@@ -117,56 +60,15 @@ export default function SidebarLinks() {
           dataTour="sidebar-login"
         />
       )}
+
       <SidebarItem
-        isActiveFallback={location.pathname.includes('gamepage')}
-        url="/"
-        icon={faGamepad}
-        label={t('Library')}
-        onClick={async () => handleRefresh()}
-        dataTour="sidebar-library"
+        isActiveFallback={location.pathname.includes('store')}
+        url="/store/epic"
+        icon={faStore}
+        label={t('stores', 'Epic Games Store')}
+        dataTour="sidebar-stores"
       />
 
-      <div className="SidebarItemWithSubmenu">
-        <SidebarItem
-          isActiveFallback={location.pathname.includes('store')}
-          url={`/store/${defaultStore}`}
-          icon={faStore}
-          label={t('stores', 'Stores')}
-          dataTour="sidebar-stores"
-        />
-        {inWebviewScreen && (
-          <div className="SidebarSubmenu">
-            <SidebarItem
-              className="SidebarLinks__subItem"
-              url="/store/epic"
-              label={t('store', 'Epic Store')}
-            />
-            <SidebarItem
-              className="SidebarLinks__subItem"
-              url="/store/gog"
-              label={t('gog-store', 'GOG Store')}
-            />
-            <SidebarItem
-              className="SidebarLinks__subItem"
-              url="/store/amazon"
-              label={t('amazon-luna', 'Amazon Luna')}
-            />
-            {zoom.enabled && (
-              <SidebarItem
-                className="SidebarLinks__subItem"
-                url="/store/zoom"
-                label={t('zoom-store', 'Zoom Store')}
-              />
-            )}
-          </div>
-        )}
-      </div>
-      <SidebarItem
-        url="/discounts"
-        icon={faTags}
-        label={t('discounts.sidebar', 'Deals')}
-        dataTour="sidebar-discounts"
-      />
       <div className="divider" />
       <div className="SidebarItemWithSubmenu">
         <SidebarItem
@@ -237,15 +139,6 @@ export default function SidebarLinks() {
         dataTour="sidebar-downloads"
       />
 
-      {!isWin && (
-        <SidebarItem
-          url="/wine-manager"
-          icon={faWineGlass}
-          label={t('wine.manager.link', 'Wine Manager')}
-          dataTour="sidebar-wine"
-        />
-      )}
-
       {loggedIn && (
         <SidebarItem
           url="/login"
@@ -282,7 +175,7 @@ export default function SidebarLinks() {
         <SidebarItem
           elementType="button"
           onClick={() => handleExternalLink(window.api.openPatreonPage)}
-          icon={faPatreon}
+          icon={faCoffee}
           label="Patreon"
         />
 

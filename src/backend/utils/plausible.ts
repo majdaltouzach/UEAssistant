@@ -7,10 +7,7 @@ import {
   isSteamDeck
 } from 'backend/constants/environment'
 import { logInfo, logWarning, LogPrefix } from 'backend/logger'
-import { GOGUser } from 'backend/storeManagers/gog/user'
 import { LegendaryUser } from 'backend/storeManagers/legendary/user'
-import { NileUser } from 'backend/storeManagers/nile/user'
-import { libraryStore } from 'backend/storeManagers/sideload/electronStores'
 import { getOsInfo } from 'backend/utils/systeminfo/osInfo'
 import { app } from 'electron'
 import https from 'https'
@@ -81,10 +78,7 @@ export async function startPlausible() {
   plausible.enableAutoPageviews()
   const appVersion = app.getVersion()
   const providersObject = {
-    gog: !!GOGUser.isLoggedIn(),
-    epic: !!LegendaryUser.isLoggedIn(),
-    amazon: !!NileUser.isLoggedIn(),
-    sideloaded: libraryStore.raw_store.games?.length > 0
+    epic: !!LegendaryUser.isLoggedIn()
   }
   const loggedInProviders = Object.entries(providersObject)
     .filter(([, v]) => v)
@@ -105,10 +99,7 @@ export async function startPlausible() {
 
   const props = {
     version: appVersion,
-    gog: providersObject.gog || false,
     epic: providersObject.epic || false,
-    amazon: providersObject.amazon || false,
-    sideloaded: providersObject.sideloaded || false,
     providers: loggedInProviders.join(', '),
     OS: process.platform,
     arch: process.arch,

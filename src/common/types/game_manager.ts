@@ -6,10 +6,8 @@ import {
   ExecResult,
   InstallArgs,
   InstallInfo,
-  LaunchOption,
-  GOGAchievement
+  LaunchOption
 } from 'common/types'
-import { GOGCloudSavesLocation } from './gog'
 import type LogWriter from 'backend/logger/log_writer'
 
 export interface InstallResult {
@@ -44,11 +42,7 @@ export interface Game {
   ) => Promise<boolean>
   moveInstall: (newInstallPath: string) => Promise<InstallResult>
   repair: () => Promise<ExecResult>
-  syncSaves: (
-    arg: string,
-    path: string,
-    gogSaves?: GOGCloudSavesLocation[]
-  ) => Promise<string>
+  syncSaves: (arg: string, path: string) => Promise<string>
   uninstall: (args: RemoveArgs) => Promise<ExecResult>
   update: (updateOverwrites?: {
     build?: string
@@ -58,9 +52,8 @@ export interface Game {
     dependencies?: string[]
   }) => Promise<InstallResult>
   forceUninstall: () => Promise<void>
-  stop: (stopWine?: boolean) => Promise<void>
+  stop: () => Promise<void>
   isGameAvailable: () => Promise<boolean>
-  getAchievements?: (lang: string) => Promise<GOGAchievement[]>
 }
 
 export interface LibraryManager {

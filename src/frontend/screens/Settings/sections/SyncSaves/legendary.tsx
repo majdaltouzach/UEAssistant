@@ -9,7 +9,6 @@ import {
   ToggleSwitch
 } from 'frontend/components/UI'
 import { syncSaves } from 'frontend/helpers'
-import ContextProvider from 'frontend/state/ContextProvider'
 import { SyncType } from 'frontend/types'
 import { ProgressDialog } from 'frontend/components/UI/ProgressDialog'
 import SettingsContext from '../../SettingsContext'
@@ -18,11 +17,9 @@ import { MenuItem } from '@mui/material'
 
 interface Props {
   autoSyncSaves: boolean
-  isProton?: boolean
   savesPath: string
   setAutoSyncSaves: (value: boolean) => void
   setSavesPath: (value: string) => void
-  winePrefix?: string
   syncCommands: { name: string; value: string }[]
   featureSupported: boolean
   quickSavesToggle: () => React.ReactNode
@@ -33,8 +30,6 @@ export default function LegendarySyncSaves({
   setSavesPath,
   autoSyncSaves,
   setAutoSyncSaves,
-  isProton,
-  winePrefix,
   syncCommands,
   featureSupported,
   quickSavesToggle: QuickSavesToggle
@@ -46,8 +41,6 @@ export default function LegendarySyncSaves({
   const [manuallyOutputShow, setManuallyOutputShow] = useState<boolean>(false)
   const [retry, setRetry] = useState<boolean>(false)
   const { t } = useTranslation()
-  const { platform } = useContext(ContextProvider)
-  const isWin = platform === 'win32'
   const { appName } = useContext(SettingsContext)
 
   useEffect(() => {
@@ -56,18 +49,17 @@ export default function LegendarySyncSaves({
         return
       }
       setLoading(true)
-      const newSavePath = (await window.api.getDefaultSavePath(
+      const newSavePath = await window.api.getDefaultSavePath(
         appName,
-        'legendary',
-        []
-      )) as string
+        'legendary'
+      )
 
       setSavesPath(newSavePath)
       setLoading(false)
       setRetry(false)
     }
     if (featureSupported) setDefaultSaveFolder()
-  }, [winePrefix, isProton, retry])
+  }, [retry])
 
   async function handleSync() {
     setIsSyncing(true)
@@ -191,7 +183,7 @@ export default function LegendarySyncSaves({
           <InfoBox text="infobox.help">
             <ul>
               <li>{t('help.sync.part1')}</li>
-              {!isWin && <li>{t('help.sync.part2')}</li>}
+              <li>{t('help.sync.part2')}</li>
               <li>{t('help.sync.part3')}</li>
               <li>{t('help.sync.part4')}</li>
             </ul>

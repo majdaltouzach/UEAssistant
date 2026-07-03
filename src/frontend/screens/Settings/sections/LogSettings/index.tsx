@@ -80,27 +80,16 @@ export default function LogSettings() {
   )
   const [refreshing, setRefreshing] = useState<boolean>(true)
 
-  const { epic, gog, amazon, zoom, sideloadedLibrary } =
-    useContext(ContextProvider)
+  const { epic } = useContext(ContextProvider)
   const [installedGames, setInstalledGames] = useState<GameInfo[]>([])
 
   useEffect(() => {
-    let games: GameInfo[] = []
-    games = games.concat(epic.library.filter((game) => game.is_installed))
-    games = games.concat(gog.library.filter((game) => game.is_installed))
-    games = games.concat(amazon.library.filter((game) => game.is_installed))
-    games = games.concat(zoom.library.filter((game) => game.is_installed))
-    games = games.concat(sideloadedLibrary.filter((game) => game.is_installed))
-    games = games.sort((game1, game2) => game1.title.localeCompare(game2.title))
+    const games = epic.library
+      .filter((game) => game.is_installed)
+      .sort((game1, game2) => game1.title.localeCompare(game2.title))
 
     setInstalledGames(games)
-  }, [
-    epic.library,
-    gog.library,
-    amazon.library,
-    sideloadedLibrary,
-    zoom.library
-  ])
+  }, [epic.library])
 
   const getLogContent = () => {
     void window.api.getLogContent(showLogOf).then((content: string) => {
@@ -129,7 +118,7 @@ export default function LogSettings() {
 
   const descriptiveLogFileName = useMemo(() => {
     if (!showLogOf.runner)
-      return t('setting.log.descriptiveNames.heroic', 'General Heroic log')
+      return t('setting.log.descriptiveNames.heroic', 'General UEAssistant log')
     if (showLogOf.appName) {
       const gameTitle = installedGames.find(
         ({ app_name }) => app_name === showLogOf.appName
@@ -145,25 +134,14 @@ export default function LogSettings() {
         'setting.log.descriptiveNames.legendary',
         'Epic Games / Legendary log'
       )
-    if (showLogOf.runner === 'gog')
-      return t('setting.log.descriptiveNames.gog', 'GOG log')
-    if (showLogOf.runner === 'nile')
-      return t('setting.log.descriptiveNames.nile', 'Amazon / Nile log')
-    if (showLogOf.runner === 'zoom')
-      return t('setting.log.descriptiveNames.zoom', 'Zoom log')
     return ''
   }, [showLogOf, installedGames, t])
 
   const logFilesToShow = useMemo(() => {
     const baseFiles: { title: string; args: GetLogFileArgs }[] = [
-      { title: 'Heroic', args: {} },
-      { title: 'Epic/Legendary', args: { runner: 'legendary' } },
-      { title: 'GOG', args: { runner: 'gog' } },
-      { title: 'Amazon/Nile', args: { runner: 'nile' } }
+      { title: 'UEAssistant', args: {} },
+      { title: 'Epic/Legendary', args: { runner: 'legendary' } }
     ]
-    if (zoom.enabled) {
-      baseFiles.push({ title: 'Zoom', args: { runner: 'zoom' } })
-    }
     const logsForInstalledGames = installedGames.map((game) => ({
       title: game.overrides?.title || game.title,
       args: {
@@ -172,7 +150,7 @@ export default function LogSettings() {
       }
     }))
     return baseFiles.concat(logsForInstalledGames)
-  }, [installedGames, zoom.enabled])
+  }, [installedGames])
 
   return (
     <>

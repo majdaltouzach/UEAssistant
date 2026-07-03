@@ -42,7 +42,7 @@ const DownloadManagerItem = ({
   state,
   handleClearItem
 }: Props) => {
-  const { amazon, epic, gog, showDialogModal } = useContext(ContextProvider)
+  const { epic, showDialogModal } = useContext(ContextProvider)
   const { t } = useTranslation('gamepage')
   const { t: t2 } = useTranslation('translation')
   const isPaused = state && ['idle', 'paused'].includes(state)
@@ -57,7 +57,7 @@ const DownloadManagerItem = ({
     )
   }
 
-  const library = [...epic.library, ...gog.library, ...amazon.library]
+  const library = epic.library
 
   const { params, addToQueueTime, endTime, type, startTime } = element
   const {
@@ -74,7 +74,7 @@ const DownloadManagerItem = ({
   useEffect(() => {
     const getNewInfo = async () => {
       const newInfo = await getGameInfo(appName, runner)
-      if (newInfo && newInfo.runner !== 'sideload') {
+      if (newInfo) {
         setGameInfo(newInfo)
       }
     }
@@ -242,8 +242,7 @@ const DownloadManagerItem = ({
         <span className="titleSize">
           {title}
           <span title={path}>
-            {size ?? ''} |{' '}
-            {platformToInstall === 'osx' ? 'Mac' : platformToInstall}
+            {size ?? ''} | {platformToInstall}
             {canceled ? ` (${t('queue.label.canceled', 'Canceled')})` : ''}
           </span>
         </span>

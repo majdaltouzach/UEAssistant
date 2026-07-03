@@ -2,23 +2,15 @@ import Store from 'electron-store'
 import { Get } from 'type-fest'
 
 import {
-  WineVersionInfo,
-  InstalledInfo,
   UserInfo,
   RecentGame,
   HiddenGame,
   FavouriteGame,
   DMQueueElement,
-  GOGLoginData,
   AppSettings,
-  WikiInfo,
-  GameInfo,
   WindowProps,
   UploadedLogData
 } from 'common/types'
-import { UserData } from 'common/types/gog'
-import { NileUserData } from './nile'
-import { ZoomCredentials } from './zoom'
 
 export interface StoreStructure {
   configStore: {
@@ -43,22 +35,11 @@ export interface StoreStructure {
       currentLogFile: string
       lastLogFile: string
       legendaryLogFile: string
-      gogdlLogFile: string
-      nileLogFile: string
     }
     'window-props': WindowProps
     settings: AppSettings
     skipVcRuntime: boolean
     showSnapWarning: boolean
-  }
-  wineDownloaderInfoStore: {
-    'wine-releases': WineVersionInfo[]
-  }
-  gogInstalledGamesStore: {
-    installed: InstalledInfo[]
-  }
-  zoomInstalledGamesStore: {
-    installed: InstalledInfo[]
   }
   timestampStore: {
     [K: string]: {
@@ -70,43 +51,9 @@ export interface StoreStructure {
   fontsStore: {
     fonts: string[]
   }
-  gogConfigStore: {
-    userData: UserData
-    credentials?: GOGLoginData
-    isLoggedIn: boolean
-  }
-  zoomConfigStore: {
-    credentials?: ZoomCredentials
-    isLoggedIn: boolean
-    username?: string
-  }
-  nileConfigStore: {
-    userData?: NileUserData
-  }
-  sideloadedStore: {
-    games: GameInfo[]
-    // FIXME: Not sure if this is correct, seems like this key is only used once
-    installed: InstalledInfo[]
-  }
   downloadManager: {
     queue: DMQueueElement[]
     finished: DMQueueElement[]
-  }
-  gogSyncStore: {
-    [appName: string]: {
-      [saveName: string]: string
-    }
-  }
-  zoomSyncStore: {
-    [appName: string]: {
-      [saveName: string]: string
-    }
-  }
-  gogPrivateBranches: {
-    [appName: string]: string
-  }
-  wikigameinfo: {
-    [title: string]: WikiInfo
   }
   uploadedLogs: Record<string, UploadedLogData>
   migrationsStore: {

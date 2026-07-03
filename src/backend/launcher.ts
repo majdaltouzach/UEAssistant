@@ -8,99 +8,53 @@ import {
   ExecResult,
   LaunchPreperationResult,
   RpcClient,
-  WineInstallation,
-  WineCommandArgs,
-  SteamRuntime,
   GameSettings,
-  KnowFixesInfo,
   LaunchParams,
   StatusPromise
 } from 'common/types'
 // This handles launching games, prefix creation etc..
 
-import i18next from 'i18next'
-import { existsSync, mkdirSync } from 'graceful-fs'
-import { join, dirname, isAbsolute } from 'path'
+import { existsSync } from 'graceful-fs'
+import { join, isAbsolute } from 'path'
 
 import {
   constructAndUpdateRPC,
-  getSteamRuntime,
   isEpicServiceOffline,
   quoteIfNecessary,
   errorHandler,
   removeQuoteIfNecessary,
   memoryLog,
   sendGameStatusUpdate,
-  checkWineBeforeLaunch,
-  isMacSonomaOrHigher,
-  askForceUninstall,
-  getGame
+  askForceUninstall
 } from './utils'
 import {
   createGameLogWriter,
   getRunnerLogWriter,
-  logDebug,
   logError,
   logInfo,
-  LogPrefix,
-  logWarning
+  LogPrefix
 } from './logger'
 import { GlobalConfig } from './config'
-import { DXVK, runWineCommandOnGame, Winetricks } from './tools'
-import gogSetup from './storeManagers/gog/setup'
-import nileSetup from './storeManagers/nile/setup'
-import { spawn, spawnSync } from 'child_process'
+import { spawn } from 'child_process'
 import shlex from 'shlex'
 import { isOnline } from './online_monitor'
-import { showDialogBoxModalAuto } from './dialog/dialog'
-import { legendarySetup } from './storeManagers/legendary/setup'
 import { libraryManagerMap } from 'backend/storeManagers'
-import * as VDF from '@node-steam/vdf'
-import { readFileSync, writeFileSync } from 'fs'
 import { LegendaryCommand } from './storeManagers/legendary/commands'
 import { searchForExecutableOnPath } from './utils/os/path'
 import {
   createAbortController,
   deleteAbortController
 } from './utils/aborthandler/aborthandler'
-import { download, isInstalled } from './wine/runtimes/runtimes'
-import { storeMap } from 'common/utils'
 import { getMainWindow } from './main_window'
-import { sendFrontendMessage } from './ipc'
-import { getUmuPath, isUmuSupported } from './utils/compatibility_layers'
-import { copyFile } from 'fs/promises'
 import { app, powerSaveBlocker } from 'electron'
-import gogPresence from './storeManagers/gog/presence'
 import { addRecentGame } from './recent_games/recent_games'
 import { tsStore } from './constants/key_value_stores'
-import {
-  defaultUmuPath,
-  sharedWinePrefix,
-  fixesPath,
-  flatpakHome,
-  galaxyCommunicationExePath,
-  gamesConfigPath,
-  runtimePath,
-  userHome
-} from './constants/paths'
-import {
-  isCLINoGui,
-  isLinux,
-  isMac,
-  isSteamDeckGameMode,
-  isWindows,
-  isIntelMac,
-  isSteamDeck,
-  isFlatpak,
-  flatpakRuntimeVersion
-} from './constants/environment'
+import { gamesConfigPath } from './constants/paths'
+import { isCLINoGui, isLinux, isWindows } from './constants/environment'
 import { formatSystemInfo, getSystemInfo } from './utils/systeminfo'
-import { gameAnticheatInfo } from './anticheat/utils'
 
 import type { PartialDeep } from 'type-fest'
 import type LogWriter from './logger/log_writer'
-import { isEnabled } from './storeManagers/legendary/eos_overlay/eos_overlay'
-import { Game } from 'common/types/game_manager'
 
 let powerDisplayId: number | null
 
@@ -130,7 +84,7 @@ const launchEventCallback: (args: LaunchParams) => StatusPromise = async ({
   }
 
   const gameSettings = await game.getSettings()
-  const { autoSyncSaves, savesPath, gogSaves = [] } = gameSettings
+  const { autoSyncSaves, savesPath } = gameSettings
 
   if (!launchArguments && gameSettings.lastUsedLaunchOption) {
     launchArguments = gameSettings.lastUsedLaunchOption
@@ -156,7 +110,7 @@ const launchEventCallback: (args: LaunchParams) => StatusPromise = async ({
     })
     logInfo(`Downloading saves for ${title}`, LogPrefix.Backend)
     try {
-      await game.syncSaves('--skip-upload', savesPath, gogSaves)
+      await game.syncSaves('--skip-upload', savesPath)
       logInfo(`Saves for ${title} downloaded`, LogPrefix.Backend)
     } catch (error) {
       logError(
@@ -195,34 +149,6 @@ const launchEventCallback: (args: LaunchParams) => StatusPromise = async ({
     )
   }
 
-  const isNative = game.isNative()
-
-  // check if isNative, if not, check if wine is valid
-  if (!isNative) {
-    const isWineOkToLaunch = await checkWineBeforeLaunch(
-      gameInfo,
-      gameSettings,
-      logWriter
-    )
-
-    if (!isWineOkToLaunch) {
-      logError(
-        `Was not possible to launch using ${gameSettings.wineVersion.name}`,
-        LogPrefix.Backend
-      )
-
-      sendGameStatusUpdate({
-        appName,
-        runner,
-        status: 'done'
-      })
-
-      await logWriter.close()
-
-      return { status: 'error' }
-    }
-  }
-
   await runBeforeLaunchScript(gameInfo, gameSettings, logWriter)
 
   sendGameStatusUpdate({
@@ -237,11 +163,6 @@ const launchEventCallback: (args: LaunchParams) => StatusPromise = async ({
     args,
     skipVersionCheck
   )
-
-  if (runner === 'gog') {
-    gogPresence.setCurrentGame(appName)
-    await gogPresence.setPresence()
-  }
 
   const launchResult = await command
     .catch(async (exception) => {
@@ -258,10 +179,6 @@ const launchEventCallback: (args: LaunchParams) => StatusPromise = async ({
       await logWriter.close()
     })
 
-  if (runner === 'gog') {
-    gogPresence.setCurrentGame('')
-    await gogPresence.setPresence()
-  }
   // Stop display sleep blocker
   if (powerDisplayId !== null) {
     logInfo('Stopping Display Power Saver Blocker', LogPrefix.Backend)
@@ -278,19 +195,6 @@ const launchEventCallback: (args: LaunchParams) => StatusPromise = async ({
     sessionPlaytime + tsStore.get(`${appName}.totalPlayed`, 0)
   tsStore.set(`${appName}.totalPlayed`, Math.floor(totalPlaytime))
 
-  const { disablePlaytimeSync } = GlobalConfig.get().getSettings()
-  if (runner === 'gog') {
-    if (!disablePlaytimeSync) {
-      await libraryManagerMap['gog']
-        .getGame(appName)
-        .updateGOGPlaytime(startPlayingDate, finishedPlayingDate)
-    } else {
-      logWarning(
-        'Posting playtime session to server skipped - playtime sync disabled',
-        { prefix: LogPrefix.Backend }
-      )
-    }
-  }
   await addRecentGame(gameInfo)
 
   if (autoSyncSaves && isOnline()) {
@@ -308,7 +212,7 @@ const launchEventCallback: (args: LaunchParams) => StatusPromise = async ({
 
     logInfo(`Uploading saves for ${title}`, LogPrefix.Backend)
     try {
-      await game.syncSaves('--skip-download', savesPath, gogSaves)
+      await game.syncSaves('--skip-download', savesPath)
       logInfo(`Saves uploaded for ${title}`, LogPrefix.Backend)
     } catch (error) {
       logError(
@@ -332,9 +236,11 @@ const launchEventCallback: (args: LaunchParams) => StatusPromise = async ({
   return { status: launchResult ? 'done' : 'error' }
 }
 
+// Native-Linux-only launcher: no per-platform Wine/Proton/DXVK settings to
+// prune anymore, so this just strips the noisy/irrelevant fields before we
+// log the game's settings.
 function filterGameSettingsForLog(
-  originalSettings: GameSettings,
-  notNative: boolean
+  originalSettings: GameSettings
 ): PartialDeep<GameSettings> {
   const gameSettings: PartialDeep<GameSettings> =
     structuredClone(originalSettings)
@@ -343,146 +249,6 @@ function filterGameSettingsForLog(
   delete gameSettings.enableQuickSavesMenu
   // if this is visible, it means verboseLogs is true, no need to print it
   delete gameSettings.verboseLogs
-
-  // remove gamescope settings if it's disabled
-  if (gameSettings.gamescope) {
-    if (!gameSettings.gamescope.enableLimiter) {
-      delete gameSettings.gamescope.fpsLimiter
-      delete gameSettings.gamescope.fpsLimiterNoFocus
-    }
-    if (!gameSettings.gamescope.enableUpscaling) {
-      delete gameSettings.gamescope.upscaleMethod
-      delete gameSettings.gamescope.upscaleHeight
-      delete gameSettings.gamescope.upscaleWidth
-      delete gameSettings.gamescope.gameHeight
-      delete gameSettings.gamescope.gameWidth
-      delete gameSettings.gamescope.windowType
-    }
-  }
-
-  // remove settings that are not used on Linux
-  if (isLinux) {
-    delete gameSettings.enableMsync
-    delete gameSettings.wineCrossoverBottle
-    delete gameSettings.advertiseAvxForRosetta
-
-    if (notNative) {
-      const wineVersion = gameSettings.wineVersion
-      if (wineVersion) {
-        if (wineVersion.type === 'proton') {
-          delete gameSettings.autoInstallDxvk
-          delete gameSettings.autoInstallVkd3d
-        } else {
-          delete gameSettings.useSteamRuntime
-        }
-      }
-
-      if (isSteamDeck) {
-        delete gameSettings.autoInstallDxvkNvapi
-      }
-    } else {
-      // remove settings that are not used on native Linux games
-      delete gameSettings.wineVersion
-      delete gameSettings.winePrefix
-      delete gameSettings.autoInstallDxvk
-      delete gameSettings.autoInstallDxvkNvapi
-      delete gameSettings.autoInstallVkd3d
-      delete gameSettings.enableFsync
-      delete gameSettings.enableEsync
-      delete gameSettings.enableFSR
-      delete gameSettings.enableWineWayland
-      delete gameSettings.enableHDR
-      delete gameSettings.enableWoW64
-      delete gameSettings.showFps
-      delete gameSettings.enableDXVKFpsLimit
-      delete gameSettings.eacRuntime
-      delete gameSettings.battlEyeRuntime
-      delete gameSettings.useGameMode
-    }
-  }
-
-  // remove settings that are not used on Mac
-  if (isMac) {
-    delete gameSettings.useGameMode
-    delete gameSettings.gamescope
-    delete gameSettings.nvidiaPrime
-    delete gameSettings.battlEyeRuntime
-    delete gameSettings.eacRuntime
-    delete gameSettings.enableFSR
-    delete gameSettings.enableWineWayland
-    delete gameSettings.enableHDR
-    delete gameSettings.enableWoW64
-    delete gameSettings.showMangohud
-    delete gameSettings.disableUMU
-    delete gameSettings.useSteamRuntime
-    delete gameSettings.enableFsync
-
-    if (notNative) {
-      const wineType = gameSettings.wineVersion
-      delete gameSettings.preferSystemLibs
-      delete gameSettings.autoInstallVkd3d
-      delete gameSettings.autoInstallDxvkNvapi
-      if (wineType) {
-        if (wineType.type === 'wine') {
-          delete gameSettings.wineCrossoverBottle
-          delete gameSettings.advertiseAvxForRosetta
-          if (wineType.name?.includes('DXMT')) {
-            delete gameSettings.autoInstallDxvk
-          }
-        }
-
-        if (wineType.type === 'toolkit') {
-          delete gameSettings.autoInstallDxvk
-          delete gameSettings.wineCrossoverBottle
-        }
-
-        if (wineType.type === 'crossover') {
-          delete gameSettings.autoInstallDxvk
-          delete gameSettings.winePrefix
-        }
-      }
-    } else {
-      // remove settings that are not used on native Mac games
-      delete gameSettings.enableDXVKFpsLimit
-      delete gameSettings.wineVersion
-      delete gameSettings.winePrefix
-      delete gameSettings.wineCrossoverBottle
-      delete gameSettings.advertiseAvxForRosetta
-      delete gameSettings.autoInstallDxvk
-      delete gameSettings.autoInstallDxvkNvapi
-      delete gameSettings.autoInstallVkd3d
-    }
-  }
-
-  // remove settings that are not used on Windows
-  if (isWindows) {
-    delete gameSettings.enableMsync
-    delete gameSettings.enableFSR
-    delete gameSettings.enableEsync
-    delete gameSettings.enableFsync
-    delete gameSettings.enableWineWayland
-    delete gameSettings.enableHDR
-    delete gameSettings.enableWoW64
-    delete gameSettings.enableDXVKFpsLimit
-    delete gameSettings.DXVKFpsCap
-    delete gameSettings.autoInstallDxvk
-    delete gameSettings.autoInstallDxvkNvapi
-    delete gameSettings.autoInstallVkd3d
-    delete gameSettings.gamescope
-    delete gameSettings.useGameMode
-    delete gameSettings.showMangohud
-    delete gameSettings.showFps
-    delete gameSettings.preferSystemLibs
-    delete gameSettings.wineCrossoverBottle
-    delete gameSettings.winePrefix
-    delete gameSettings.wineVersion
-    delete gameSettings.battlEyeRuntime
-    delete gameSettings.eacRuntime
-    delete gameSettings.nvidiaPrime
-    delete gameSettings.disableUMU
-    delete gameSettings.advertiseAvxForRosetta
-    delete gameSettings.useSteamRuntime
-  }
 
   return gameSettings
 }
@@ -518,33 +284,18 @@ async function prepareLaunch(
     'Launching',
     `"${gameInfo.title}" (${gameInfo.runner})`
   ])
-  const native = libraryManagerMap[gameInfo.runner]
-    .getGame(gameInfo.app_name)
-    .isNative()
-  await logWriter.logInfo(['Native?', native])
+  await logWriter.logInfo(['Native?', isNative])
 
   const isThirdPartyManagedApp = gameInfo && !!gameInfo.thirdPartyManagedApp
 
   if (isThirdPartyManagedApp) {
-    if (!isWindows) {
-      let prefixOrBottleFolder: string | null = gameSettings.winePrefix
-      if (isMac && gameSettings.wineVersion.type === 'crossover') {
-        prefixOrBottleFolder = await getCrossoverBottleFolder(gameSettings)
-      }
-      if (prefixOrBottleFolder)
-        await logWriter.logInfo(['Installed in:', prefixOrBottleFolder])
-    }
-
     await logWriter.logInfo([
       'Managed by a third-party app:',
       gameInfo.thirdPartyManagedApp,
       '\n\n'
     ])
   } else {
-    const installPath =
-      gameInfo.runner === 'sideload'
-        ? gameInfo.folder_name
-        : gameInfo.install.install_path
+    const installPath = gameInfo.install.install_path
 
     await logWriter.logInfo(['Installed in:', installPath, '\n\n'])
   }
@@ -558,513 +309,13 @@ async function prepareLaunch(
 
   await logWriter.logInfo([
     'Game Settings:',
-    filterGameSettingsForLog(gameSettings, !native),
+    filterGameSettingsForLog(gameSettings),
     '\n',
     `Stored at: ${join(gamesConfigPath, gameInfo.app_name + '.json')}`,
     '\n\n'
   ])
 
-  const acInfoPromise = gameAnticheatInfo(gameInfo.namespace)
-  logWriter.logInfo(
-    acInfoPromise.then((info) =>
-      info?.status ? `Anticheat Status: ${info.status}` : ''
-    )
-  )
-  logWriter.logInfo([
-    acInfoPromise.then((info) =>
-      info?.anticheats ? `Anticheats: ${info.anticheats}\n\n` : ''
-    )
-  ])
-
-  // If we're not on Linux, we can return here
-  if (!isLinux) {
-    return { success: true, rpcClient, offlineMode }
-  }
-
-  // Figure out where MangoHud/GameMode/Gamescope are located, if they're enabled
-  let mangoHudCommand: string[] = []
-  let gameModeBin: string | null = null
-  const gameScopeCommand: string[] = []
-  if (gameSettings.showMangohud && !isSteamDeckGameMode) {
-    const mangoHudBin = await searchForExecutableOnPath('mangohud')
-    if (!mangoHudBin) {
-      let reason =
-        'Mangohud is enabled, but `mangohud` executable could not be found on $PATH'
-      if (isFlatpak) {
-        reason = `${reason}. Make sure to install Mangohud's flatpak package with runtime ${flatpakRuntimeVersion} and restart Heroic.`
-      }
-      return {
-        success: false,
-        failureReason: reason
-      }
-    }
-
-    mangoHudCommand = [mangoHudBin, '--dlsym']
-  }
-
-  if (gameSettings.useGameMode) {
-    gameModeBin = await searchForExecutableOnPath('gamemoderun')
-    if (!gameModeBin) {
-      return {
-        success: false,
-        failureReason:
-          'GameMode is enabled, but `gamemoderun` executable could not be found on $PATH'
-      }
-    }
-  }
-
-  if (
-    (gameSettings.gamescope?.enableLimiter ||
-      gameSettings.gamescope?.enableUpscaling) &&
-    !isSteamDeckGameMode
-  ) {
-    const gameScopeBin = await searchForExecutableOnPath('gamescope')
-    if (!gameScopeBin) {
-      let warningMessage =
-        'Gamescope is enabled, but `gamescope` executable could not be found on $PATH'
-      if (isFlatpak) {
-        warningMessage = `${warningMessage}. Make sure to install Gamescope's flatpak package with runtime ${flatpakRuntimeVersion}`
-      }
-
-      logWarning(warningMessage)
-    } else {
-      // Gamescope does not provide a version option and they changed
-      // cli options on version 3.12. So we do what lutris does.
-      let oldVersion = true // < 3.12
-      const { stderr } = spawnSync(gameScopeBin, ['--help'], {
-        encoding: 'utf-8'
-      })
-      if (stderr && stderr.includes('-F, --filter')) {
-        oldVersion = false
-      }
-
-      gameScopeCommand.push(gameScopeBin)
-
-      if (gameSettings.gamescope.enableUpscaling) {
-        // game res
-        if (gameSettings.gamescope.gameWidth) {
-          gameScopeCommand.push('-w', gameSettings.gamescope.gameWidth)
-        }
-        if (gameSettings.gamescope.gameHeight) {
-          gameScopeCommand.push('-h', gameSettings.gamescope.gameHeight)
-        }
-
-        // gamescope res
-        if (gameSettings.gamescope.upscaleWidth) {
-          gameScopeCommand.push('-W', gameSettings.gamescope.upscaleWidth)
-        }
-        if (gameSettings.gamescope.upscaleHeight) {
-          gameScopeCommand.push('-H', gameSettings.gamescope.upscaleHeight)
-        }
-
-        // upscale method
-        if (gameSettings.gamescope.upscaleMethod === 'fsr') {
-          if (oldVersion) gameScopeCommand.push('-U')
-          else gameScopeCommand.push('-F', 'fsr')
-        }
-        if (gameSettings.gamescope.upscaleMethod === 'nis') {
-          if (oldVersion) gameScopeCommand.push('-Y')
-          else gameScopeCommand.push('-F', 'nis')
-        }
-        if (gameSettings.gamescope.upscaleMethod === 'integer') {
-          if (oldVersion) gameScopeCommand.push('-i')
-          else gameScopeCommand.push('-S', 'integer')
-        }
-        // didn't find stretch in old version
-        if (gameSettings.gamescope.upscaleMethod === 'stretch' && !oldVersion) {
-          gameScopeCommand.push('-S', 'stretch')
-        }
-
-        // window type
-        if (gameSettings.gamescope.windowType === 'fullscreen') {
-          gameScopeCommand.push('-f')
-        }
-        if (gameSettings.gamescope.windowType === 'borderless') {
-          gameScopeCommand.push('-b')
-        }
-      }
-
-      if (gameSettings.gamescope.enableLimiter) {
-        if (gameSettings.gamescope.fpsLimiter) {
-          gameScopeCommand.push('-r', gameSettings.gamescope.fpsLimiter)
-        }
-        if (gameSettings.gamescope.fpsLimiterNoFocus) {
-          gameScopeCommand.push('-o', gameSettings.gamescope.fpsLimiterNoFocus)
-        }
-      }
-
-      if (gameSettings.gamescope.enableForceGrabCursor) {
-        gameScopeCommand.push('--force-grab-cursor')
-      }
-
-      if (gameSettings.showMangohud) {
-        gameScopeCommand.push('--mangoapp')
-      }
-
-      gameScopeCommand.push(
-        ...shlex.split(gameSettings.gamescope.additionalOptions ?? '')
-      )
-
-      // Note: needs to be the last option
-      gameScopeCommand.push('--')
-    }
-  }
-
-  if (
-    (await isUmuSupported(gameSettings, false)) &&
-    isOnline() &&
-    !(await isInstalled('umu')) &&
-    (await getUmuPath()) === defaultUmuPath
-  ) {
-    await download('umu')
-  }
-
-  // If the Steam Runtime is enabled, find a valid one
-  let steamRuntime: string[] = []
-  const shouldUseRuntime =
-    gameSettings.useSteamRuntime &&
-    (isNative ||
-      (!(await isUmuSupported(gameSettings)) &&
-        gameSettings.wineVersion.type === 'proton'))
-
-  if (shouldUseRuntime) {
-    // Determine which runtime to use based on toolmanifest.vdf which is shipped with proton
-    let nonNativeRuntime: SteamRuntime['type'] = 'soldier'
-    if (!isNative) {
-      try {
-        const parentPath = dirname(gameSettings.wineVersion.bin)
-        const requiredAppId = VDF.parse(
-          readFileSync(join(parentPath, 'toolmanifest.vdf'), 'utf-8')
-        ).manifest?.require_tool_appid
-        if (requiredAppId === 1628350) nonNativeRuntime = 'sniper'
-      } catch (error) {
-        logError(
-          ['Failed to parse toolmanifest.vdf:', error],
-          LogPrefix.Backend
-        )
-      }
-    }
-
-    const runtimeType = isNative ? 'scout' : nonNativeRuntime
-    const { path, args } = await getSteamRuntime(runtimeType)
-    if (!path) {
-      return {
-        success: false,
-        failureReason:
-          'Steam Runtime is enabled, but no runtimes could be found\n' +
-          `Make sure Steam ${
-            isNative
-              ? 'is'
-              : `and the SteamLinuxRuntime - ${
-                  nonNativeRuntime === 'sniper' ? 'Sniper' : 'Soldier'
-                } are`
-          } installed`
-      }
-    }
-
-    logInfo(`Using Steam ${runtimeType} Runtime`, LogPrefix.Backend)
-
-    steamRuntime = [path, ...args]
-  }
-
-  return {
-    success: true,
-    rpcClient,
-    mangoHudCommand,
-    gameModeBin: gameModeBin ?? undefined,
-    gameScopeCommand,
-    steamRuntime,
-    offlineMode
-  }
-}
-
-// Use Crossover's verbose output to extract the path of the game's configured bottle
-async function getCrossoverBottleFolder(gameSettings: GameSettings) {
-  const command = runWineCommand({
-    commandParts: [
-      '--bottle',
-      gameSettings.wineCrossoverBottle,
-      '--verbose', // so it prints the WINEPREFIX env value
-      'whoami' // using whoami because we have to call a command
-    ],
-    gameSettings,
-    skipPrefixCheckIKnowWhatImDoing: true
-  })
-
-  return command
-    .then((result) => {
-      // match the `WINEPREFIX = .....` line to extract the bottle folder
-      const match = result.stderr.match(/WINEPREFIX = "(.*)"\n/)
-      if (match) return match[1]
-
-      return null
-    })
-    .catch(() => {
-      return null
-    })
-}
-
-async function prepareWineLaunch(
-  game: Game,
-  logWriter: LogWriter
-): Promise<{
-  success: boolean
-  failureReason?: string
-  envVars?: Record<string, string>
-}> {
-  const gameInfo = game.getGameInfo()
-
-  const gameSettings = await game.getSettings()
-
-  if (!(await validWine(gameSettings.wineVersion))) {
-    const defaultWine = GlobalConfig.get().getSettings().wineVersion
-    // now check if the default wine is valid as well
-    if (!(await validWine(defaultWine))) {
-      return { success: false }
-    }
-  }
-
-  // Verify that the CrossOver bottle exists
-  if (isMac && gameSettings.wineVersion.type === 'crossover') {
-    const bottleExists = existsSync(
-      join(
-        userHome,
-        'Library/Application Support/CrossOver/Bottles',
-        gameSettings.wineCrossoverBottle,
-        'cxbottle.conf'
-      )
-    )
-    if (!bottleExists) {
-      showDialogBoxModalAuto({
-        title: i18next.t(
-          'box.error.cx-bottle-not-found.title',
-          'CrossOver bottle not found'
-        ),
-        message: i18next.t(
-          'box.error.cx-bottle-not-found.message',
-          `The CrossOver bottle "{{bottle_name}}" does not exist, can't launch!`,
-          { bottle_name: gameSettings.wineCrossoverBottle }
-        ),
-        type: 'ERROR'
-      })
-      return {
-        success: false,
-        failureReason: `CrossOver bottle "${gameSettings.wineCrossoverBottle}" does not exist`
-      }
-    }
-  }
-
-  logWriter.logInfo(
-    Winetricks.listInstalled(game).then((installedPackages) => {
-      const packagesString = installedPackages.join(', ')
-      return `Winetricks packages: ${packagesString}\n\n`
-    })
-  )
-
-  // We only want to log this for legendary on Linux
-  // On windows, the overlay is installed globally
-  // On mac, the overlay doesn't work
-  if (gameInfo.runner === 'legendary' && isLinux) {
-    const checkEOSOverlayStatusPromise = isEnabled(gameInfo.app_name)
-
-    // The first time a game runs, the overlay is not enabled yet at this point
-    void logWriter.logInfo(
-      checkEOSOverlayStatusPromise.then(
-        (enabled) => `EOS Overlay: ${enabled ? 'Enabled' : 'Not enabled'}`
-      )
-    )
-  }
-
-  if (gameSettings.offlineMode && !gameInfo.canRunOffline) {
-    void logWriter.logWarning(
-      "Warning: 'offlineMode' is turned on but the game does not support offline mode. Disable 'offlineMode' in the game's settings."
-    )
-  }
-
-  await verifyWinePrefix(gameSettings)
-  const experimentalFeatures =
-    GlobalConfig.get().getSettings().experimentalFeatures
-
-  let hasUpdated = false
-
-  let prefixOrBottleFolder: string | null = gameSettings.winePrefix
-  if (isMac && gameSettings.wineVersion.type === 'crossover') {
-    prefixOrBottleFolder = await getCrossoverBottleFolder(gameSettings)
-  }
-
-  // we check this because if the Crossover's bottle is not configured
-  // properly, this path will be null
-  if (prefixOrBottleFolder) {
-    const appsNamesPath = join(prefixOrBottleFolder, 'installed_games')
-    if (!existsSync(appsNamesPath)) {
-      mkdirSync(prefixOrBottleFolder, { recursive: true })
-      writeFileSync(appsNamesPath, JSON.stringify([gameInfo.app_name]), 'utf-8')
-      hasUpdated = true
-    } else {
-      const installedGames: string[] = JSON.parse(
-        readFileSync(appsNamesPath, 'utf-8')
-      )
-      if (!installedGames.includes(gameInfo.app_name)) {
-        installedGames.push(gameInfo.app_name)
-        writeFileSync(appsNamesPath, JSON.stringify(installedGames), 'utf-8')
-        hasUpdated = true
-      }
-    }
-  }
-
-  if (hasUpdated) {
-    logInfo(
-      ['Created/Updated Wineprefix at', gameSettings.winePrefix],
-      LogPrefix.Backend
-    )
-    if (gameInfo.runner === 'gog') {
-      await gogSetup(gameInfo.app_name)
-      sendFrontendMessage('gameStatusUpdate', {
-        appName: gameInfo.app_name,
-        runner: 'gog',
-        status: 'launching'
-      })
-    }
-    if (gameInfo.runner === 'nile') {
-      await nileSetup(gameInfo.app_name)
-    }
-    if (gameInfo.runner === 'legendary') {
-      await legendarySetup(gameInfo.app_name, logWriter)
-    }
-
-    await installFixes(gameInfo.app_name, gameInfo.runner)
-  }
-
-  try {
-    if (
-      gameInfo.runner === 'gog' &&
-      experimentalFeatures?.cometSupport !== false
-    ) {
-      const galaxyCommWinePath =
-        'C:\\ProgramData\\GOG.com\\Galaxy\\redists\\GalaxyCommunication.exe'
-      const communicationDest = await getWinePath({
-        path: galaxyCommWinePath,
-        gameSettings,
-        variant: 'unix'
-      })
-
-      if (!existsSync(communicationDest)) {
-        mkdirSync(dirname(communicationDest), { recursive: true })
-        await copyFile(galaxyCommunicationExePath, communicationDest)
-        await runWineCommand({
-          commandParts: [
-            'sc',
-            'create',
-            'GalaxyCommunication',
-            `binpath=${galaxyCommWinePath}`
-          ],
-          gameSettings,
-          protonVerb: 'runinprefix'
-        })
-      }
-    }
-  } catch (err) {
-    logError([
-      'Failed to install GalaxyCommunication dummy into the prefix:',
-      err
-    ])
-  }
-
-  // If DXVK/VKD3D installation is enabled, install it
-  if (gameSettings.wineVersion.type === 'wine') {
-    if (gameSettings.autoInstallDxvk) {
-      await DXVK.installRemove(gameSettings, 'dxvk', 'backup')
-    }
-    if (isLinux && gameSettings.autoInstallDxvkNvapi) {
-      await DXVK.installRemove(gameSettings, 'dxvk-nvapi', 'backup')
-    }
-    if (isLinux && gameSettings.autoInstallVkd3d) {
-      await DXVK.installRemove(gameSettings, 'vkd3d', 'backup')
-    }
-  }
-
-  if (
-    gameSettings.eacRuntime &&
-    isOnline() &&
-    !(await isInstalled('eac_runtime'))
-  ) {
-    await download('eac_runtime')
-  }
-
-  if (
-    gameSettings.battlEyeRuntime &&
-    isOnline() &&
-    !(await isInstalled('battleye_runtime'))
-  ) {
-    await download('battleye_runtime')
-  }
-
-  const envVars = setupWineEnvVars(gameSettings, gameInfo.folder_name)
-
-  return { success: true, envVars: envVars }
-}
-
-export function readKnownFixes(appName: string, runner: Runner) {
-  const fixPath = join(fixesPath, `${appName}-${storeMap[runner]}.json`)
-
-  if (!existsSync(fixPath)) return null
-
-  try {
-    const fixesContent = JSON.parse(
-      readFileSync(fixPath).toString()
-    ) as KnowFixesInfo
-
-    return fixesContent
-  } catch (error) {
-    // if we fail to download the json file, it can be malformed causing
-    // JSON.parse to throw an exception
-    logWarning(`Known fixes could not be applied, ignoring.\n${error}`)
-    return null
-  }
-}
-
-async function installFixes(appName: string, runner: Runner) {
-  const knownFixes = readKnownFixes(appName, runner)
-
-  if (!knownFixes) return
-
-  if (knownFixes.winetricks) {
-    sendGameStatusUpdate({
-      appName,
-      runner: runner,
-      status: 'winetricks'
-    })
-
-    for (const winetricksPackage of knownFixes.winetricks) {
-      await Winetricks.install(runner, appName, winetricksPackage)
-    }
-  }
-
-  if (knownFixes.runInPrefix) {
-    const gameInfo = getGame(appName, runner).getGameInfo()
-
-    sendGameStatusUpdate({
-      appName,
-      runner: runner,
-      status: 'redist',
-      context: 'FIXES'
-    })
-
-    for (const filePath of knownFixes.runInPrefix) {
-      const fullPath = join(gameInfo.install.install_path!, filePath)
-      await runWineCommandOnGame(runner, appName, {
-        commandParts: [fullPath],
-        wait: true,
-        protonVerb: 'run'
-      })
-    }
-  }
-}
-
-function getKnownFixesEnvVariables(appName: string, runner: Runner) {
-  const knownFixes = readKnownFixes(appName, runner)
-
-  return knownFixes?.envVariables || {}
+  return { success: true, rpcClient, offlineMode }
 }
 
 /**
@@ -1074,18 +325,8 @@ function getKnownFixesEnvVariables(appName: string, runner: Runner) {
  */
 function setupEnvVars(gameSettings: GameSettings, installPath?: string) {
   const ret: Record<string, string> = {}
-  if (gameSettings.nvidiaPrime) {
-    ret.DRI_PRIME = '1'
-    ret.__NV_PRIME_RENDER_OFFLOAD = '1'
-    ret.__GLX_VENDOR_LIBRARY_NAME = 'nvidia'
-  }
-
-  if (isMac && gameSettings.showFps) {
-    ret.MTL_HUD_ENABLED = '1'
-  }
 
   if (isLinux && installPath) {
-    // Used by steam runtime to mount the game directory to the container
     ret.STEAM_COMPAT_INSTALL_PATH = installPath
   }
 
@@ -1115,263 +356,14 @@ function setupWrapperEnvVars(wrapperEnv: WrapperEnv) {
 
   ret.HEROIC_APP_NAME = wrapperEnv.appName
   ret.HEROIC_APP_RUNNER = wrapperEnv.appRunner
-  ret.GAMEID = 'umu-0'
-
-  switch (wrapperEnv.appRunner) {
-    case 'gog':
-      ret.HEROIC_APP_SOURCE = 'gog'
-      ret.STORE = 'gog'
-      break
-    case 'legendary':
-      ret.HEROIC_APP_SOURCE = 'epic'
-      ret.STORE = 'egs'
-      break
-    case 'nile':
-      ret.HEROIC_APP_SOURCE = 'amazon'
-      ret.STORE = 'amazon'
-      break
-    case 'sideload':
-      ret.HEROIC_APP_SOURCE = 'sideload'
-      break
-    case 'zoom':
-      ret.HEROIC_APP_SOURCE = 'zoom'
-      ret.STORE = 'zoomplatform'
-      break
-  }
+  ret.HEROIC_APP_SOURCE = 'epic'
+  ret.STORE = 'egs'
 
   return ret
 }
 
-/**
- * Maps Wine-related settings to environment variables
- * @param gameSettings The GameSettings to get the environment variables for
- * @param gameId If Proton and the Steam Runtime are used, the SteamGameId variable will be set to `heroic-gameId` if it's unset
- * @returns A Record that can be passed to execAsync/spawn
- */
-function setupWineEnvVars(gameSettings: GameSettings, gameId = '0') {
-  const { wineVersion, winePrefix, wineCrossoverBottle } = gameSettings
-
-  const ret: Record<string, string> = {}
-
-  // Add WINEPREFIX / STEAM_COMPAT_DATA_PATH / CX_BOTTLE
-  const steamInstallPath = join(flatpakHome, '.steam', 'steam')
-  switch (wineVersion.type) {
-    case 'wine': {
-      ret.WINEPREFIX = winePrefix
-
-      // Disable Winemenubuilder to not mess with file associations
-      const wmbDisableString = 'winemenubuilder.exe=d'
-      // If the user already set WINEDLLOVERRIDES, append to the end
-      const dllOverridesVar = gameSettings.enviromentOptions.find(
-        ({ key }) => key.toLowerCase() === 'winedlloverrides'
-      )
-      if (dllOverridesVar) {
-        ret[dllOverridesVar.key] =
-          dllOverridesVar.value + ';' + wmbDisableString
-      } else {
-        ret.WINEDLLOVERRIDES = wmbDisableString
-      }
-
-      break
-    }
-    case 'proton':
-      ret.STEAM_COMPAT_CLIENT_INSTALL_PATH = steamInstallPath
-      ret.WINEPREFIX = winePrefix
-      ret.STEAM_COMPAT_DATA_PATH = winePrefix
-      ret.PROTONPATH = dirname(gameSettings.wineVersion.bin)
-      break
-    case 'crossover':
-      ret.CX_BOTTLE = wineCrossoverBottle
-      break
-    case 'toolkit':
-      ret.WINEPREFIX = winePrefix
-      break
-  }
-
-  if (gameSettings.showFps) {
-    if (isMac) ret.MTL_HUD_ENABLED = '1'
-    else ret.DXVK_HUD = 'fps'
-  }
-  if (gameSettings.enableDXVKFpsLimit) {
-    ret.DXVK_FRAME_RATE = gameSettings.DXVKFpsCap
-  }
-  if (gameSettings.enableFSR) {
-    ret.WINE_FULLSCREEN_FSR = '1'
-    ret.WINE_FULLSCREEN_FSR_STRENGTH =
-      gameSettings.maxSharpness?.toString() || '2'
-  } else {
-    ret.WINE_FULLSCREEN_FSR = '0'
-  }
-  if (gameSettings.enableEsync && wineVersion.type !== 'proton') {
-    ret.WINEESYNC = '1'
-  }
-  if (!gameSettings.enableEsync && wineVersion.type === 'proton') {
-    ret.PROTON_NO_ESYNC = '1'
-  }
-  if (
-    isMac &&
-    (gameSettings.enableMsync || wineVersion.name.endsWith('-DXMT'))
-  ) {
-    ret.WINEMSYNC = '1'
-    // This is to solve a problem with d3dmetal
-    if (wineVersion.type === 'toolkit') {
-      ret.WINEESYNC = '1'
-    }
-  }
-  if (isLinux && gameSettings.enableFsync && wineVersion.type !== 'proton') {
-    ret.WINEFSYNC = '1'
-  }
-  if (isLinux && !gameSettings.enableFsync && wineVersion.type === 'proton') {
-    ret.PROTON_NO_FSYNC = '1'
-  }
-  if (isLinux && gameSettings.enableWineWayland) {
-    if (wineVersion.type === 'proton') {
-      ret.PROTON_ENABLE_WAYLAND = '1'
-      if (gameSettings.enableHDR) {
-        ret.PROTON_ENABLE_HDR = '1'
-      }
-    } else {
-      ret.DISPLAY = ''
-      if (gameSettings.enableHDR) {
-        ret.DXVK_HDR = '1'
-      }
-    }
-  }
-  if (isLinux && gameSettings.enableWoW64) {
-    if (wineVersion.type === 'proton') {
-      ret.PROTON_USE_WOW64 = '1'
-    } else {
-      ret.WINEARCH = 'wow64'
-    }
-  }
-  if (wineVersion.type === 'proton') {
-    if (gameSettings.autoInstallDxvkNvapi) {
-      ret.PROTON_ENABLE_NVAPI = '1'
-      ret.DXVK_NVAPI_ALLOW_OTHER_DRIVERS = '1'
-    }
-    // proton 9 enabled NVAPI by default
-    else {
-      ret.PROTON_DISABLE_NVAPI = '1'
-    }
-  }
-  if (
-    isLinux &&
-    gameSettings.autoInstallDxvkNvapi &&
-    wineVersion.type === 'wine'
-  ) {
-    ret.DXVK_ENABLE_NVAPI = '1'
-    ret.DXVK_NVAPI_ALLOW_OTHER_DRIVERS = '1'
-  }
-  if (isLinux && gameSettings.eacRuntime) {
-    ret.PROTON_EAC_RUNTIME = join(runtimePath, 'eac_runtime')
-  }
-  if (isLinux && gameSettings.battlEyeRuntime) {
-    ret.PROTON_BATTLEYE_RUNTIME = join(runtimePath, 'battleye_runtime')
-  }
-  if (wineVersion.type === 'proton') {
-    // If we don't set this, GE-Proton tries to guess the AppID from the prefix path, which doesn't work in our case
-    ret.STEAM_COMPAT_APP_ID = process.env.STEAM_COMPAT_APP_ID || '0'
-    ret.SteamAppId = process.env.SteamAppId || ret.STEAM_COMPAT_APP_ID
-    // This sets the name of the log file given when setting PROTON_LOG=1
-    ret.SteamGameId = process.env.SteamGameId || `heroic-${gameId}`
-    ret.PROTON_LOG_DIR = flatpakHome
-    // add back default wine/dxvk debug logging
-    if (gameSettings?.verboseLogs) {
-      if (
-        !gameSettings?.enviromentOptions.find((env) => env.key === 'WINEDEBUG')
-      )
-        ret.WINEDEBUG = '+fixme'
-      if (
-        !gameSettings?.enviromentOptions.find(
-          (env) => env.key === 'DXVK_LOG_LEVEL'
-        )
-      )
-        ret.DXVK_LOG_LEVEL = 'info'
-      if (
-        !gameSettings?.enviromentOptions.find(
-          (env) => env.key === 'VKD3D_DEBUG'
-        )
-      )
-        ret.VKD3D_DEBUG = 'fixme'
-    }
-  }
-  if (!gameSettings.preferSystemLibs && wineVersion.type === 'wine') {
-    // https://github.com/ValveSoftware/Proton/blob/4221d9ef07cc38209ff93dbbbca9473581a38255/proton#L1091-L1093
-    if (!process.env.ORIG_LD_LIBRARY_PATH) {
-      ret.ORIG_LD_LIBRARY_PATH = process.env.LD_LIBRARY_PATH ?? ''
-    }
-
-    const { lib32, lib } = wineVersion
-    if (lib32 && lib) {
-      // append wine libs at the beginning
-      ret.LD_LIBRARY_PATH = [lib, lib32, process.env.LD_LIBRARY_PATH]
-        .filter(Boolean)
-        .join(':')
-
-      // https://github.com/ValveSoftware/Proton/blob/4221d9ef07cc38209ff93dbbbca9473581a38255/proton#L1099
-      // NOTE: Proton does not make sure that these folders exist first, I believe we should :^)
-      const gstp_path_lib64 = join(lib, 'gstreamer-1.0')
-      const gstp_path_lib32 = join(lib32, 'gstreamer-1.0')
-      if (existsSync(gstp_path_lib64) && existsSync(gstp_path_lib32)) {
-        ret.GST_PLUGIN_SYSTEM_PATH_1_0 = gstp_path_lib64 + ':' + gstp_path_lib32
-      }
-
-      // https://github.com/ValveSoftware/Proton/blob/4221d9ef07cc38209ff93dbbbca9473581a38255/proton#L1097
-      const winedll_path_lib64 = join(lib, 'wine')
-      const winedll_path_lib32 = join(lib32, 'wine')
-      if (existsSync(winedll_path_lib64) && existsSync(winedll_path_lib32)) {
-        ret.WINEDLLPATH = winedll_path_lib64 + ':' + winedll_path_lib32
-      }
-    } else {
-      logError(
-        [
-          `Couldn't find all library folders of ${wineVersion.name}!`,
-          `Missing ${lib32} and/or ${lib}!`,
-          `Falling back to system libraries!`
-        ].join('\n')
-      )
-    }
-  }
-  if (
-    gameSettings.advertiseAvxForRosetta &&
-    isMac &&
-    wineVersion.type === 'toolkit'
-  ) {
-    ret.ROSETTA_ADVERTISE_AVX = '1'
-  }
-  // Workaround for Steam Input virtual gamepad not working for games launched through HGL from Steam
-  // using deprecated WineGE/ProtonGE releases (<= 8.x) following SDL behavior change on version >= 2.30
-  // (included with flatpak Freedesktop runtime 24.08 or newer)
-  // https://github.com/Heroic-Games-Launcher/HeroicGamesLauncher/issues/4708
-  // https://github.com/libsdl-org/SDL/issues/14410
-  // https://gitlab.com/freedesktop-sdk/freedesktop-sdk/-/issues/1818
-  if (
-    isLinux &&
-    /(GE|Wine|Proton)-(Proton[7-8]|[4-7].*-GE|GE-4.[0-9]*)/.test(
-      wineVersion.name
-    )
-  ) {
-    ret.SteamVirtualGamepadInfo = ''
-    logWarning(
-      `Deprecated Wine-GE/Proton-GE release (<= 8.x) detected. Applying workaround for Steam Input virtual gamepad detection.`
-    )
-  }
-  return ret
-}
-
-function setupWrappers(
-  gameSettings: GameSettings,
-  mangoHudCommand?: string[],
-  gameModeBin?: string,
-  gameScopeCommand?: string[],
-  steamRuntime?: string[]
-): Array<string> {
+function setupWrappers(gameSettings: GameSettings): Array<string> {
   const wrappers: string[] = []
-
-  // let gamescope be first wrapper always
-  if (gameScopeCommand) {
-    wrappers.push(...gameScopeCommand)
-  }
 
   if (gameSettings.wrapperOptions) {
     gameSettings.wrapperOptions.forEach((wrapperEntry: WrapperVariable) => {
@@ -1379,105 +371,7 @@ function setupWrappers(
       wrappers.push(...shlex.split(wrapperEntry.args ?? ''))
     })
   }
-  if (mangoHudCommand && gameScopeCommand?.length === 0) {
-    wrappers.push(...mangoHudCommand)
-  }
-  if (gameModeBin) {
-    wrappers.push(gameModeBin)
-  }
-  if (steamRuntime) {
-    wrappers.push(...steamRuntime)
-  }
   return wrappers.filter((n) => n)
-}
-
-/**
- * Checks if the game's selected Wine version exists
- * @param wineVersion an object of type WineInstallation with binary path and name to check
- * @returns true if the wine version exists, false if it doesn't
- */
-export async function validWine(
-  wineVersion: WineInstallation
-): Promise<boolean> {
-  if (!wineVersion) {
-    return false
-  }
-
-  logInfo(
-    `Checking if wine version exists: ${wineVersion.name}`,
-    LogPrefix.Backend
-  )
-
-  // verify if necessary binaries exist
-  const { bin, wineserver, type } = wineVersion
-  const necessary = type === 'wine' ? [bin, wineserver] : [bin]
-  const haveAll = necessary.every((binary) => existsSync(binary as string))
-
-  if (isMac && type === 'toolkit') {
-    const isMacOSUpToDate = await isMacSonomaOrHigher()
-    const isGPTKCompatible: boolean = isMacOSUpToDate && !isIntelMac
-    if (!isGPTKCompatible) {
-      return false
-    }
-  }
-
-  // if wine version does not exist, use the default one
-  if (!haveAll) {
-    return false
-  }
-
-  return true
-}
-
-/**
- * Verifies that a Wineprefix exists by running 'wineboot --init'
- * @param gameSettings The settings of the game to verify the Wineprefix of
- * @returns stderr & stdout of 'wineboot --init'
- */
-export async function verifyWinePrefix(
-  settings: GameSettings
-): Promise<{ res: ExecResult }> {
-  const { winePrefix = sharedWinePrefix, wineVersion } = settings
-
-  const isValidWine = await validWine(wineVersion)
-
-  if (!isValidWine) {
-    return { res: { stdout: '', stderr: '' } }
-  }
-
-  if (wineVersion.type === 'crossover') {
-    return { res: { stdout: '', stderr: '' } }
-  }
-
-  if (!existsSync(winePrefix) && !(await isUmuSupported(settings))) {
-    mkdirSync(winePrefix, { recursive: true })
-  }
-
-  // If the registry isn't available yet, things like DXVK installers might fail. So we have to wait on wineboot then
-  const systemRegPath =
-    wineVersion.type === 'proton'
-      ? join(winePrefix, 'pfx', 'system.reg')
-      : join(winePrefix, 'system.reg')
-  const haveToWait = !existsSync(systemRegPath)
-
-  const command = runWineCommand({
-    commandParts: (await isUmuSupported(settings))
-      ? ['createprefix']
-      : ['wineboot', '--init'],
-    wait: haveToWait,
-    gameSettings: settings,
-    protonVerb: 'run',
-    skipPrefixCheckIKnowWhatImDoing: true
-  })
-
-  return command
-    .then((result) => {
-      return { res: result }
-    })
-    .catch((error) => {
-      logError(['Unable to create Wineprefix: ', error], LogPrefix.Backend)
-      throw error
-    })
 }
 
 function launchCleanup(rpcClient?: RpcClient) {
@@ -1485,161 +379,6 @@ function launchCleanup(rpcClient?: RpcClient) {
     rpcClient.destroy()
     logInfo('Stopped Discord Rich Presence', LogPrefix.Backend)
   }
-}
-
-async function runWineCommand({
-  gameSettings,
-  commandParts,
-  wait,
-  protonVerb = 'run',
-  installFolderName,
-  gameInstallPath,
-  options,
-  startFolder,
-  skipPrefixCheckIKnowWhatImDoing = false,
-  ignoreLogging = false
-}: WineCommandArgs): Promise<{
-  stderr: string
-  stdout: string
-  code?: number
-}> {
-  const settings = gameSettings
-    ? gameSettings
-    : GlobalConfig.get().getSettings()
-  const { wineVersion, winePrefix } = settings
-
-  if (!skipPrefixCheckIKnowWhatImDoing && wineVersion.type !== 'crossover') {
-    let requiredPrefixFiles = [
-      'dosdevices',
-      'drive_c',
-      'system.reg',
-      'user.reg',
-      'userdef.reg'
-    ]
-    if (wineVersion.type === 'proton') {
-      requiredPrefixFiles = [
-        'pfx.lock',
-        'tracked_files',
-        'version',
-        'config_info',
-        ...requiredPrefixFiles.map((path) => join('pfx', path))
-      ]
-    }
-    requiredPrefixFiles = requiredPrefixFiles.map((path) =>
-      join(winePrefix, path)
-    )
-    requiredPrefixFiles.push(winePrefix)
-
-    if (!requiredPrefixFiles.every((path) => existsSync(path))) {
-      logWarning(
-        'Required prefix files are missing, running `verifyWinePrefix` to create prefix',
-        LogPrefix.Backend
-      )
-      mkdirSync(winePrefix, { recursive: true })
-      await verifyWinePrefix(settings)
-    }
-  }
-
-  if (!(await validWine(wineVersion))) {
-    return { stdout: '', stderr: 'Invalid wine' }
-  }
-
-  const env_vars: Record<string, string> = {
-    ...process.env,
-    ...options?.env,
-    ...setupEnvVars(settings, gameInstallPath),
-    ...setupWineEnvVars(settings, installFolderName),
-    PROTON_VERB: protonVerb
-  }
-
-  if (ignoreLogging) {
-    delete env_vars['PROTON_LOG']
-  }
-
-  const wineBin = wineVersion.bin.replaceAll("'", '')
-  const umuSupported = await isUmuSupported(settings)
-  const runnerBin = umuSupported ? await getUmuPath() : wineBin
-
-  if (wineVersion.type === 'proton' && !umuSupported) {
-    commandParts.unshift(protonVerb)
-  }
-
-  logDebug(['Running Wine command:', commandParts.join(' ')], LogPrefix.Backend)
-
-  return new Promise<{ stderr: string; stdout: string }>((res) => {
-    const wrappers = options?.wrappers || []
-    let bin = runnerBin
-
-    if (wrappers.length) {
-      bin = wrappers.shift()!
-      commandParts.unshift(...wrappers, runnerBin)
-    }
-
-    const child = spawn(bin, commandParts, {
-      env: env_vars,
-      cwd: startFolder
-    })
-    child.stdout.setEncoding('utf-8')
-    child.stderr.setEncoding('utf-8')
-
-    if (options?.logWriters) {
-      options.logWriters.forEach((writer) =>
-        writer.writeString(
-          `Wine Command: ${bin} ${commandParts.join(' ')}\n\nGame Log:\n`
-        )
-      )
-    }
-
-    const stdout = memoryLog()
-    const stderr = memoryLog()
-
-    child.stdout.on('data', (data: string) => {
-      options?.logWriters?.forEach((writer) => writer.writeString(data))
-
-      if (options?.onOutput) {
-        options.onOutput(data, child)
-      }
-
-      stdout.push(data)
-    })
-
-    child.stderr.on('data', (data: string) => {
-      options?.logWriters?.forEach((writer) => writer.writeString(data))
-
-      if (options?.onOutput) {
-        options.onOutput(data, child)
-      }
-
-      stderr.push(data)
-    })
-
-    child.on('close', async (code) => {
-      const response = {
-        stderr: stderr.join(''),
-        stdout: stdout.join(''),
-        code
-      }
-
-      if (wait && wineVersion.wineserver) {
-        await new Promise<void>((res_wait) => {
-          const wait_child = spawn(wineVersion.wineserver!, ['--wait'], {
-            env: env_vars,
-            cwd: startFolder
-          })
-
-          wait_child.on('close', () => {
-            res_wait()
-          })
-        })
-      }
-
-      res(response)
-    })
-
-    child.on('error', (error) => {
-      console.log(error)
-    })
-  })
 }
 
 interface RunnerProps {
@@ -1655,42 +394,15 @@ let shouldUsePowerShell: boolean | null = null
 
 function appNameFromCommandParts(commandParts: string[], runner: Runner) {
   let appNameIndex = -1
-  let idx = -1
 
-  switch (runner) {
-    case 'gog':
-      idx = commandParts.findIndex((value) => value === 'launch')
-      if (idx > -1) {
-        // for GOGdl, between `launch` and the app name there's another element
-        appNameIndex = idx + 2
-      } else {
-        // for the `download`, `repair` and `update` command it's right after
-        idx = commandParts.findIndex((value) =>
-          ['download', 'repair', 'update'].includes(value)
-        )
-        if (idx > -1) {
-          appNameIndex = idx + 1
-        }
-      }
-      break
-    case 'legendary':
-      // for legendary, the appName comes right after the commands
-      idx = commandParts.findIndex((value) =>
-        ['launch', 'install', 'repair', 'update'].includes(value)
-      )
-      if (idx > -1) {
-        appNameIndex = idx + 1
-      }
-      break
-    case 'nile':
-      // for nile, we pass the appName as the last command part
-      idx = commandParts.findIndex((value) =>
-        ['launch', 'install', 'update', 'verify'].includes(value)
-      )
-      if (idx > -1) {
-        appNameIndex = commandParts.length - 1
-      }
-      break
+  if (runner === 'legendary') {
+    // for legendary, the appName comes right after the commands
+    const idx = commandParts.findIndex((value) =>
+      ['launch', 'install', 'repair', 'update'].includes(value)
+    )
+    if (idx > -1) {
+      appNameIndex = idx + 1
+    }
   }
 
   return appNameIndex > -1 ? commandParts[appNameIndex] : ''
@@ -1929,51 +641,6 @@ function getRunnerCallWithoutCredentials(
   ].join(' ')
 }
 
-/**
- * Converts Unix paths to Windows ones or vice versa
- * @param path The Windows/Unix path you have
- * @param game Required for runWineCommand
- * @param variant The path variant (Windows/Unix) that you'd like to get (passed to `winepath` as -u/-w)
- * @returns The path returned by `winepath`
- */
-async function getWinePath({
-  path,
-  gameSettings,
-  variant = 'unix'
-}: {
-  path: string
-  gameSettings: GameSettings
-  variant?: 'win' | 'unix'
-}): Promise<string> {
-  logDebug(`Getting wine path for ${path}.`, LogPrefix.Backend)
-  // TODO: Proton has a special verb for getting Unix paths, and another one for Windows ones. Use those instead
-  //       Note that this would involve running `proton runinprefix cmd /c echo path` first to expand env vars
-  //       https://github.com/ValveSoftware/Proton/blob/4221d9ef07cc38209ff93dbbbca9473581a38255/proton#L1526-L1533
-  const { stdout, stderr } = await runWineCommand({
-    gameSettings,
-    commandParts: [
-      'cmd',
-      '/c',
-      'winepath',
-      variant === 'unix' ? '-u' : '-w',
-      path
-    ],
-    wait: false,
-    protonVerb: 'runinprefix',
-    ignoreLogging: true
-  })
-
-  const result = stdout.trim()
-  if (!result) {
-    logError(
-      `Couldn't get wine path for ${path}.\n${stderr}`,
-      LogPrefix.Backend
-    )
-  }
-
-  return result
-}
-
 async function runBeforeLaunchScript(
   gameInfo: GameInfo,
   gameSettings: GameSettings,
@@ -2038,7 +705,6 @@ async function runScriptForGame(
     const scriptEnv = {
       HEROIC_GAME_APP_NAME: gameInfo.app_name,
       HEROIC_GAME_EXEC: gameInfo.install.executable,
-      HEROIC_GAME_PREFIX: gameSettings.winePrefix,
       HEROIC_GAME_RUNNER: gameInfo.runner,
       HEROIC_GAME_SCRIPT_STAGE: scriptStage,
       HEROIC_GAME_TITLE: gameInfo.title,
@@ -2079,14 +745,9 @@ async function runScriptForGame(
 export {
   prepareLaunch,
   launchCleanup,
-  prepareWineLaunch,
   setupEnvVars,
   setupWrapperEnvVars,
-  setupWineEnvVars,
   setupWrappers,
-  runWineCommand,
   callRunner,
-  getWinePath,
-  launchEventCallback,
-  getKnownFixesEnvVariables
+  launchEventCallback
 }

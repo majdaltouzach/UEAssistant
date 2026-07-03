@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-update-ue"
+description = "Enables the update_ue command without any pre-configured scope."
+commands.allow = ["update_ue"]
+
+[[permission]]
+identifier = "deny-update-ue"
+description = "Denies the update_ue command without any pre-configured scope."
+commands.deny = ["update_ue"]

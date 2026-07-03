@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-uninstall-ue"
+description = "Enables the uninstall_ue command without any pre-configured scope."
+commands.allow = ["uninstall_ue"]
+
+[[permission]]
+identifier = "deny-uninstall-ue"
+description = "Denies the uninstall_ue command without any pre-configured scope."
+commands.deny = ["uninstall_ue"]

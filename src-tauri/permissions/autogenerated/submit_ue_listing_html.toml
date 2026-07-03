@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-submit-ue-listing-html"
+description = "Enables the submit_ue_listing_html command without any pre-configured scope."
+commands.allow = ["submit_ue_listing_html"]
+
+[[permission]]
+identifier = "deny-submit-ue-listing-html"
+description = "Denies the submit_ue_listing_html command without any pre-configured scope."
+commands.deny = ["submit_ue_listing_html"]

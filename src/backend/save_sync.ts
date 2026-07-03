@@ -1,35 +1,17 @@
-import { InstalledInfo, Runner } from 'common/types'
-import { GOGCloudSavesLocation, SaveFolderVariable } from 'common/types/gog'
-import { getWinePath, setupWineEnvVars, verifyWinePrefix } from './launcher'
-import { logDebug, LogPrefix, logInfo, logError, logWarning } from './logger'
-import { getShellPath } from './utils'
-import {
-  existsSync,
-  readFileSync,
-  realpathSync,
-  writeFileSync
-} from 'graceful-fs'
-import { app } from 'electron'
+import { Runner } from 'common/types'
+import { logDebug, LogPrefix, logInfo, logError } from './logger'
+import { readFileSync, writeFileSync } from 'graceful-fs'
 import { libraryManagerMap } from 'backend/storeManagers'
 import { LegendaryAppName } from './storeManagers/legendary/commands/base'
 import { legendaryInstalled } from './storeManagers/legendary/constants'
 
 async function getDefaultSavePath(
   appName: string,
-  runner: Runner,
-  alreadyDefinedGogSaves: GOGCloudSavesLocation[]
-): Promise<string | GOGCloudSavesLocation[]> {
+  runner: Runner
+): Promise<string> {
   switch (runner) {
     case 'legendary':
       return getDefaultLegendarySavePath(appName)
-    case 'gog':
-      return getDefaultGogSavePaths(appName, alreadyDefinedGogSaves)
-    case 'nile':
-      return ''
-    case 'sideload':
-      return ''
-    case 'zoom':
-      return ''
   }
 }
 
@@ -62,10 +44,6 @@ async function getDefaultLegendarySavePath(appName: string): Promise<string> {
     }
   }
 
-  if (!game.isNative()) {
-    await verifyWinePrefix(await game.getSettings())
-  }
-
   logInfo(['Computing default save path for', appName], LogPrefix.Legendary)
   await libraryManagerMap['legendary'].runRunnerCommand(
     {
@@ -77,8 +55,7 @@ async function getDefaultLegendarySavePath(appName: string): Promise<string> {
     },
     {
       abortId: appName + '-savePath',
-      logMessagePrefix: 'Getting default save path',
-      env: game.isNative() ? {} : setupWineEnvVars(await game.getSettings())
+      logMessagePrefix: 'Getting default save path'
     }
   )
 
@@ -96,121 +73,6 @@ async function getDefaultLegendarySavePath(appName: string): Promise<string> {
   }
   logInfo(['Computed save path:', new_save_path], LogPrefix.Legendary)
   return new_save_path
-}
-
-async function getDefaultGogSavePaths(
-  appName: string,
-  alreadyDefinedGogSaves: GOGCloudSavesLocation[]
-): Promise<GOGCloudSavesLocation[]> {
-  const game = libraryManagerMap['gog'].getGame(appName)
-  const gameSettings = await game.getSettings()
-  const installInfo = game.getGameInfo().install as InstalledInfo
-  const gog_save_location = await libraryManagerMap['gog'].getSaveSyncLocation(
-    appName,
-    installInfo
-  )
-
-  const { platform: installed_platform, install_path } = installInfo
-  if (!gog_save_location || !install_path) {
-    logError([
-      'gog_save_location/install_path undefined. gog_save_location = ',
-      gog_save_location,
-      'install_path = ',
-      install_path
-    ])
-    return []
-  }
-
-  // If no save locations are defined, assume the default
-  if (!gog_save_location.length) {
-    const clientId = libraryManagerMap['gog'].readInfoFile(appName)?.clientId
-    gog_save_location.push({
-      name: '__default',
-      location:
-        installed_platform === 'windows'
-          ? `%LocalAppData%/GOG.com/Galaxy/Applications/${clientId}/Storage/Shared/Files`
-          : `$HOME/Library/Application Support/GOG.com/Galaxy/Applications/${clientId}/Storage`
-    })
-  }
-
-  const gogVariableMap: Record<string, string> = {
-    INSTALL: install_path,
-    SAVED_GAMES: '%USERPROFILE%/Saved Games',
-    APPLICATION_DATA_LOCAL: '%LOCALAPPDATA%',
-    APPLICATION_DATA_LOCAL_LOW: '%APPDATA%\\..\\LocalLow',
-    APPLICATION_DATA_ROAMING: '%APPDATA%',
-    APPLICATION_SUPPORT: '$HOME/Library/Application Support',
-    DOCUMENTS: game.isNative()
-      ? app.getPath('documents')
-      : '%USERPROFILE%\\Documents'
-  } satisfies Record<SaveFolderVariable, string>
-  const resolvedLocations: GOGCloudSavesLocation[] = []
-  for (const location of gog_save_location) {
-    // If a location with the same name already has a path set,
-    // skip doing all this work
-    const potAlreadyDefinedLocation = alreadyDefinedGogSaves.find(
-      ({ name }) => name === location.name
-    )
-
-    if (potAlreadyDefinedLocation?.location.length) {
-      resolvedLocations.push(potAlreadyDefinedLocation)
-      continue
-    }
-
-    // Get all GOG-defined variables out of the path & resolve them
-    const matches = location.location.matchAll(/<\?(\w+)\?>/g)
-    let locationWithVariablesRemoved = location.location
-    for (const match of matches) {
-      const matchedText = match[0]
-      const variableName = match[1]
-      if (!gogVariableMap[variableName]) {
-        logWarning(
-          [
-            'Unknown save path variable:',
-            `${variableName},`,
-            'inserting variable itself into save path.',
-            'User will have to manually correct the path'
-          ],
-          LogPrefix.Gog
-        )
-      }
-      locationWithVariablesRemoved = locationWithVariablesRemoved.replace(
-        matchedText,
-        gogVariableMap[variableName] ?? variableName
-      )
-    }
-
-    // Path now contains no more GOG-defined variables, but might
-    // still contain Windows (%NAME%) or Unix ($NAME) ones
-    let absolutePath: string
-    if (!game.isNative()) {
-      absolutePath = await getWinePath({
-        path: locationWithVariablesRemoved,
-        gameSettings
-      })
-      // Wine already resolves symlinks and ./.. for us,
-      // so no need to run `realpathSync` here
-    } else {
-      absolutePath = await getShellPath(locationWithVariablesRemoved)
-      if (existsSync(absolutePath)) {
-        try {
-          absolutePath = realpathSync(absolutePath)
-        } catch {
-          logWarning(
-            ['Failed to run `realpath` on', `"${absolutePath}"`],
-            LogPrefix.Gog
-          )
-        }
-      }
-    }
-
-    resolvedLocations.push({
-      name: location.name,
-      location: absolutePath
-    })
-  }
-
-  return resolvedLocations
 }
 
 export { getDefaultSavePath }

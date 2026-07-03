@@ -1,0 +1,10 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "ue-listing-window",
+  "description": "Narrow permission for the hidden unrealengine.com/linux listing webview: it may only hand its rendered HTML back to Rust, nothing else.",
+  "windows": ["ue-listing"],
+  "remote": {
+    "urls": ["https://www.unrealengine.com/*"]
+  },
+  "permissions": ["allow-submit-ue-listing-html"]
+}
