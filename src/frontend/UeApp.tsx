@@ -107,8 +107,9 @@ function groupByVersion(builds: UeLinuxBuild[]): VersionGroup[] {
 // alongside it under the same version.
 function primaryBuild(builds: UeLinuxBuild[]): UeLinuxBuild {
   return (
-    builds.find((b) => b.file_name === `Linux_Unreal_Engine_${b.version}.zip`) ??
-    builds[0]
+    builds.find(
+      (b) => b.file_name === `Linux_Unreal_Engine_${b.version}.zip`
+    ) ?? builds[0]
   )
 }
 
@@ -124,7 +125,9 @@ export default function UeApp() {
   // admin password needed). Keyed by version, not file_name, since the
   // choice applies to the whole engine install regardless of which
   // companion files are grouped under it.
-  const [systemWideChoice, setSystemWideChoice] = useState<Record<string, boolean>>({})
+  const [systemWideChoice, setSystemWideChoice] = useState<
+    Record<string, boolean>
+  >({})
 
   const refreshInstalled = useCallback(() => {
     invoke<InstalledEngine[]>('list_installed_engines')
@@ -336,7 +339,9 @@ export default function UeApp() {
                         <div>
                           <strong>Unreal Engine {version}</strong>
                           <div className="ue-muted">
-                            {build.size_bytes ? formatBytes(build.size_bytes) : ''}
+                            {build.size_bytes
+                              ? formatBytes(build.size_bytes)
+                              : ''}
                             {build.uploaded ? ` · ${build.uploaded}` : ''}
                           </div>
                           {p && (
@@ -348,8 +353,12 @@ export default function UeApp() {
                               <span>
                                 {p.phase === 'download'
                                   ? `Downloading: ${formatBytes(p.downloadedBytes)}` +
-                                    (p.totalBytes ? ` / ${formatBytes(p.totalBytes)}` : '') +
-                                    (p.pct !== null ? ` (${p.pct.toFixed(0)}%)` : '') +
+                                    (p.totalBytes
+                                      ? ` / ${formatBytes(p.totalBytes)}`
+                                      : '') +
+                                    (p.pct !== null
+                                      ? ` (${p.pct.toFixed(0)}%)`
+                                      : '') +
                                     ` — ${formatBytes(p.bytesPerSec)}/s`
                                   : `Extracting ${p.pct.toFixed(0)}% — ${p.currentFile}`}
                               </span>
@@ -376,10 +385,14 @@ export default function UeApp() {
                               name={`target-${version}`}
                               checked={!systemWide}
                               onChange={() =>
-                                setSystemWideChoice((prev) => ({ ...prev, [version]: false }))
+                                setSystemWideChoice((prev) => ({
+                                  ...prev,
+                                  [version]: false
+                                }))
                               }
                             />
-                            Install for me only (<code>$HOME/.local/share</code>)
+                            Install for me only (<code>$HOME/.local/share</code>
+                            )
                           </label>
                           <label>
                             <input
@@ -387,10 +400,14 @@ export default function UeApp() {
                               name={`target-${version}`}
                               checked={systemWide}
                               onChange={() =>
-                                setSystemWideChoice((prev) => ({ ...prev, [version]: true }))
+                                setSystemWideChoice((prev) => ({
+                                  ...prev,
+                                  [version]: true
+                                }))
                               }
                             />
-                            Install for all users (<code>/opt</code>, asks for admin password)
+                            Install for all users (<code>/opt</code>, asks for
+                            admin password)
                           </label>
                         </div>
                       )}
@@ -398,8 +415,8 @@ export default function UeApp() {
                       {extras.length > 0 && (
                         <details className="ue-extras">
                           <summary>
-                            {extras.length} additional file{extras.length > 1 ? 's' : ''} for{' '}
-                            {version}
+                            {extras.length} additional file
+                            {extras.length > 1 ? 's' : ''} for {version}
                           </summary>
                           <ul className="ue-list ue-extras-list">
                             {extras.map((extra) => (
@@ -407,8 +424,12 @@ export default function UeApp() {
                                 <div>
                                   <span>{extra.file_name}</span>
                                   <div className="ue-muted">
-                                    {extra.size_bytes ? formatBytes(extra.size_bytes) : ''}
-                                    {extra.uploaded ? ` · ${extra.uploaded}` : ''}
+                                    {extra.size_bytes
+                                      ? formatBytes(extra.size_bytes)
+                                      : ''}
+                                    {extra.uploaded
+                                      ? ` · ${extra.uploaded}`
+                                      : ''}
                                   </div>
                                 </div>
                               </li>
