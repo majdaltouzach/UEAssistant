@@ -37,6 +37,20 @@ pub fn user_desktop_entry_dir() -> Result<PathBuf, String> {
 
 pub const SYSTEM_DESKTOP_ENTRY_DIR: &str = "/usr/share/applications";
 
+// XDG convention: user-level *executables* (or symlinks to them) belong in
+// $HOME/.local/bin, not $HOME/.local/share — the latter is for data/config
+// only. The engine install tree itself stays under user_engines_root()
+// (data); this is just the thin, PATH-visible launcher pointing into it.
+pub fn user_bin_dir() -> Result<PathBuf, String> {
+    dirs::executable_dir().ok_or("could not resolve $HOME/.local/bin".to_string())
+}
+
+pub const SYSTEM_BIN_DIR: &str = "/usr/bin";
+
+pub fn symlink_name_for(version: &str) -> String {
+    format!("unrealeditor-{version}")
+}
+
 pub fn engine_binary_path(install_dir: &std::path::Path) -> PathBuf {
     install_dir.join("Engine/Binaries/Linux/UnrealEditor")
 }

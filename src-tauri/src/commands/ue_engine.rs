@@ -146,6 +146,16 @@ pub fn submit_ue_listing_html(html: String) {
 // a missing size/date shouldn't fail the whole listing, since the URL is
 // the only field actually required to install.
 fn parse_ue_linux_listing(html: &str) -> Result<Vec<UeLinuxBuild>, String> {
+    // The page is Next.js-rendered: the listing data is embedded as a JSON
+    // string inside a <script> tag, and Next.js escapes `&`/`<`/`>` in that
+    // JSON as & / < / > so the payload can't break out of the
+    // script tag. Decode those before any other parsing, or the filename
+    // regex below (which doesn't treat "&" as a delimiter) swallows
+    // everything up to the next real quote character — e.g. the query
+    // string tail `...zip&x-id=GetObject` ends up inside file_name.
+    let html = decode_unicode_escapes(html);
+    let html = html.as_str();
+
     let url_re = Regex::new(
         r#"https://ucs-blob-store\.s3-accelerate\.amazonaws\.com/blobs/[^"'\s<>]+"#,
     )
@@ -155,6 +165,13 @@ fn parse_ue_linux_listing(html: &str) -> Result<Vec<UeLinuxBuild>, String> {
     let size_re = Regex::new(r"(\d+(?:\.\d+)?)\s*GB").map_err(|e| e.to_string())?;
     let date_re =
         Regex::new(r"[A-Z][a-z]{2} \d{1,2}, \d{4}").map_err(|e| e.to_string())?;
+    // Engine/Fab/Bridge zips for the same release all embed the same
+    // "X.Y.Z" release number in their file name (e.g.
+    // Linux_Unreal_Engine_5.8.0.zip, Linux_Fab_5.8.0_0.0.13.zip,
+    // Linux_Bridge_5.8.0_2025.0.1.zip all contain "5.8.0") — grouping on
+    // this lets the frontend show one "Unreal Engine 5.8.0" tile with the
+    // companion files collapsed underneath, instead of a flat file list.
+    let version_re = Regex::new(r"\d+\.\d+\.\d+").map_err(|e| e.to_string())?;
 
     let mut builds = Vec::new();
     let mut last_url_end = 0usize;
@@ -175,11 +192,20 @@ fn parse_ue_linux_listing(html: &str) -> Result<Vec<UeLinuxBuild>, String> {
             .map(|m| m.as_str().to_string())
             .unwrap_or_else(|| "unknown.zip".to_string());
 
-        // Look at the text between the end of the previous match and this
-        // one for a GB size + upload date — matches table-row order in the
-        // rendered markup without depending on exact tag structure.
-        let window_start = last_url_end;
-        let window_text = &html[window_start..m.start()];
+        // Narrow the size/date search to the text between this row's own
+        // file name (as it appears in its own visible <td>, not the URL)
+        // and the download link — not the whole gap since the previous
+        // link. That gap can span huge chunks of unrelated markup (nav,
+        // banners, other page copy), and the *first* GB/date it happens to
+        // contain isn't necessarily this row's — e.g. an unrelated "8.0 GB"
+        // mention earlier on the page was previously getting picked up
+        // instead of the row's real "37.08 GB".
+        let search_region = &html[last_url_end..m.start()];
+        let anchor_start = search_region
+            .rfind(file_name.as_str())
+            .map(|rel| last_url_end + rel)
+            .unwrap_or(last_url_end);
+        let window_text = &html[anchor_start..m.start()];
         let size_bytes = size_re
             .captures(window_text)
             .and_then(|c| c.get(1))
@@ -189,10 +215,10 @@ fn parse_ue_linux_listing(html: &str) -> Result<Vec<UeLinuxBuild>, String> {
             .find(window_text)
             .map(|m| m.as_str().to_string());
 
-        let version = file_name
-            .trim_end_matches(".zip")
-            .trim_start_matches("Linux_Unreal_Engine_")
-            .to_string();
+        let version = version_re
+            .find(&file_name)
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_else(|| file_name.clone());
 
         builds.push(UeLinuxBuild {
             file_name,
@@ -211,11 +237,22 @@ fn parse_ue_linux_listing(html: &str) -> Result<Vec<UeLinuxBuild>, String> {
         );
     }
 
-    // Only keep the actual engine archives (Linux_Unreal_Engine_*), not
-    // the Fab/Bridge companion tool zips also listed on the same page.
-    builds.retain(|b| b.file_name.starts_with("Linux_Unreal_Engine_"));
-
     Ok(builds)
+}
+
+// Decodes JS-style `\uXXXX` escapes (as produced by Next.js's
+// htmlEscapeJsonString when embedding a JSON string inside HTML). Leaves
+// anything that isn't a valid `\uXXXX` sequence untouched.
+fn decode_unicode_escapes(s: &str) -> String {
+    let re = Regex::new(r"\\u([0-9a-fA-F]{4})").unwrap();
+    re.replace_all(s, |caps: &regex::Captures| {
+        u32::from_str_radix(&caps[1], 16)
+            .ok()
+            .and_then(char::from_u32)
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| caps[0].to_string())
+    })
+    .into_owned()
 }
 
 fn urlencoding_decode(s: &str) -> String {
@@ -321,19 +358,131 @@ UE_5.6,Unreal Engine,5.6.1-44394996+++UE5+Release-5.6-Windows,False\n";
     "#;
 
     #[test]
-    fn parses_engine_entries_and_excludes_fab_companion_zips() {
+    fn groups_engine_and_fab_companion_under_the_same_version() {
         let builds = parse_ue_linux_listing(SAMPLE_LISTING_HTML).unwrap();
-        assert_eq!(builds.len(), 1);
+        assert_eq!(builds.len(), 2);
         assert_eq!(builds[0].file_name, "Linux_Unreal_Engine_5.8.0.zip");
         assert_eq!(builds[0].version, "5.8.0");
+        assert_eq!(builds[0].size_bytes, Some((37.08 * 1_073_741_824.0) as u64));
         assert!(builds[0].download_url.starts_with(
             "https://ucs-blob-store.s3-accelerate.amazonaws.com/blobs/cd/aa/"
         ));
+        assert_eq!(builds[1].file_name, "Linux_Fab_5.8.0_0.0.13.zip");
+        // Same version key as the engine entry — this is what lets the
+        // frontend group them into one "Unreal Engine 5.8.0" tile with the
+        // Fab zip collapsed underneath as an extra, instead of dropping it.
+        assert_eq!(builds[1].version, "5.8.0");
+        assert_eq!(builds[1].size_bytes, Some((0.03 * 1_073_741_824.0) as u64));
+    }
+
+    // Regression test for a real bug: the first row's size/date window used
+    // to scan from the start of the page (or previous row) up to the
+    // download link, so an unrelated "8.0 GB" mention earlier on the page
+    // (e.g. nav/banner copy) was picked up instead of the row's real
+    // "37.08 GB" — anchoring the window to the row's own file_name text
+    // fixes this.
+    const SAMPLE_WITH_DECOY_SIZE_HTML: &str = r#"
+        <div class="promo">Get 8.0 GB of extra cloud storage free!</div>
+        <table>
+          <tr>
+            <td>Linux_Unreal_Engine_5.8.0.zip</td>
+            <td>37.08 GB</td>
+            <td>Jun 17, 2026</td>
+            <td><a href="https://ucs-blob-store.s3-accelerate.amazonaws.com/blobs/cd/aa/c551-e891-4dc6-ad0c-2e8d719157ae?X-Amz-Algorithm=AWS4-HMAC-SHA256&amp;X-Amz-Expires=3600&amp;response-content-disposition=inline%3Bfilename%3D%22file.zip%22%3Bfilename%2A%3DUTF-8%27%27Linux_Unreal_Engine_5.8.0.zip&amp;x-id=GetObject">Download</a></td>
+          </tr>
+        </table>
+    "#;
+
+    #[test]
+    fn does_not_pick_up_unrelated_gb_mention_before_the_row() {
+        let builds = parse_ue_linux_listing(SAMPLE_WITH_DECOY_SIZE_HTML).unwrap();
+        assert_eq!(builds.len(), 1);
+        assert_eq!(builds[0].size_bytes, Some((37.08 * 1_073_741_824.0) as u64));
+    }
+
+    // Two different released versions, each with its own engine + companion
+    // zip, listed back to back — the version-grouping fix isn't specific to
+    // 5.8.0, and rows must not bleed into each other (wrong size/date/group).
+    const SAMPLE_MULTI_VERSION_HTML: &str = r#"
+        <table>
+          <tr>
+            <td>Linux_Unreal_Engine_5.8.0.zip</td>
+            <td>37.08 GB</td>
+            <td>Jun 17, 2026</td>
+            <td><a href="https://ucs-blob-store.s3-accelerate.amazonaws.com/blobs/aa/aa/111-e891-4dc6-ad0c-2e8d719157ae?X-Amz-Algorithm=AWS4-HMAC-SHA256&amp;X-Amz-Expires=3600&amp;response-content-disposition=inline%3Bfilename%3D%22file.zip%22%3Bfilename%2A%3DUTF-8%27%27Linux_Unreal_Engine_5.8.0.zip&amp;x-id=GetObject">Download</a></td>
+          </tr>
+          <tr>
+            <td>Linux_Fab_5.8.0_0.0.13.zip</td>
+            <td>0.03 GB</td>
+            <td>Jun 17, 2026</td>
+            <td><a href="https://ucs-blob-store.s3-accelerate.amazonaws.com/blobs/bb/bb/222-e891-4dc6-ad0c-2e8d719157ae?X-Amz-Algorithm=AWS4-HMAC-SHA256&amp;X-Amz-Expires=3600&amp;response-content-disposition=inline%3Bfilename%3D%22file.zip%22%3Bfilename%2A%3DUTF-8%27%27Linux_Fab_5.8.0_0.0.13.zip&amp;x-id=GetObject">Download</a></td>
+          </tr>
+          <tr>
+            <td>Linux_Unreal_Engine_5.7.4.zip</td>
+            <td>36.50 GB</td>
+            <td>May 2, 2026</td>
+            <td><a href="https://ucs-blob-store.s3-accelerate.amazonaws.com/blobs/cc/cc/333-e891-4dc6-ad0c-2e8d719157ae?X-Amz-Algorithm=AWS4-HMAC-SHA256&amp;X-Amz-Expires=3600&amp;response-content-disposition=inline%3Bfilename%3D%22file.zip%22%3Bfilename%2A%3DUTF-8%27%27Linux_Unreal_Engine_5.7.4.zip&amp;x-id=GetObject">Download</a></td>
+          </tr>
+          <tr>
+            <td>Linux_Bridge_5.7.4_2025.0.1.zip</td>
+            <td>0.04 GB</td>
+            <td>May 2, 2026</td>
+            <td><a href="https://ucs-blob-store.s3-accelerate.amazonaws.com/blobs/dd/dd/444-e891-4dc6-ad0c-2e8d719157ae?X-Amz-Algorithm=AWS4-HMAC-SHA256&amp;X-Amz-Expires=3600&amp;response-content-disposition=inline%3Bfilename%3D%22file.zip%22%3Bfilename%2A%3DUTF-8%27%27Linux_Bridge_5.7.4_2025.0.1.zip&amp;x-id=GetObject">Download</a></td>
+          </tr>
+        </table>
+    "#;
+
+    #[test]
+    fn groups_companions_per_version_across_multiple_releases() {
+        let builds = parse_ue_linux_listing(SAMPLE_MULTI_VERSION_HTML).unwrap();
+        assert_eq!(builds.len(), 4);
+
+        let group_580: Vec<_> = builds.iter().filter(|b| b.version == "5.8.0").collect();
+        assert_eq!(group_580.len(), 2);
+        let engine_580 = group_580
+            .iter()
+            .find(|b| b.file_name == "Linux_Unreal_Engine_5.8.0.zip")
+            .unwrap();
+        assert_eq!(engine_580.size_bytes, Some((37.08 * 1_073_741_824.0) as u64));
+
+        let group_574: Vec<_> = builds.iter().filter(|b| b.version == "5.7.4").collect();
+        assert_eq!(group_574.len(), 2);
+        let engine_574 = group_574
+            .iter()
+            .find(|b| b.file_name == "Linux_Unreal_Engine_5.7.4.zip")
+            .unwrap();
+        assert_eq!(engine_574.size_bytes, Some((36.50 * 1_073_741_824.0) as u64));
+        assert_eq!(engine_574.uploaded, Some("May 2, 2026".to_string()));
+
+        let bridge_574 = group_574
+            .iter()
+            .find(|b| b.file_name == "Linux_Bridge_5.7.4_2025.0.1.zip")
+            .unwrap();
+        assert_eq!(bridge_574.size_bytes, Some((0.04 * 1_073_741_824.0) as u64));
     }
 
     #[test]
     fn errors_when_no_download_entries_found() {
         let err = parse_ue_linux_listing("<html><body>not logged in</body></html>").unwrap_err();
         assert!(err.contains("no download entries found"));
+    }
+
+    // Real unrealengine.com/linux markup embeds the listing as a JSON string
+    // inside a <script> tag, with `&` escaped as `&` (Next.js's
+    // XSS-safe JSON-in-HTML encoding) rather than the HTML entity `&amp;`.
+    // Regression test for the confusing "5.8.0.zip&x-id=GetObject"
+    // names this produced before decode_unicode_escapes was added.
+    const SAMPLE_JSON_EMBEDDED_HTML: &str = r#"
+        <script>self.__next_f.push([1,"{\"downloadUrl\":\"https://ucs-blob-store.s3-accelerate.amazonaws.com/blobs/cd/aa/c551-e891-4dc6-ad0c-2e8d719157ae?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=3600&response-content-disposition=inline%3Bfilename%3D%22file.zip%22%3Bfilename%2A%3DUTF-8%27%27Linux_Unreal_Engine_5.8.0.zip&x-id=GetObject\",\"size\":\"37.08 GB\",\"uploaded\":\"Jun 17, 2026\"}"])</script>
+    "#;
+
+    #[test]
+    fn decodes_next_js_unicode_escaped_ampersands_before_extracting_filename() {
+        let builds = parse_ue_linux_listing(SAMPLE_JSON_EMBEDDED_HTML).unwrap();
+        assert_eq!(builds.len(), 1);
+        assert_eq!(builds[0].file_name, "Linux_Unreal_Engine_5.8.0.zip");
+        assert_eq!(builds[0].version, "5.8.0");
+        assert!(!builds[0].download_url.contains("\\u0026"));
+        assert!(builds[0].download_url.contains('&'));
     }
 }

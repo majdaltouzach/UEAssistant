@@ -4,15 +4,22 @@ use crate::commands::ue_engine::list_available_ue_linux_builds;
 use crate::desktop_entry::{desktop_entry_contents, file_name_for};
 use crate::download::download_resumable;
 use crate::extract::extract_zip_streaming;
-use crate::paths::{install_dir_for, staging_dir_for, user_desktop_entry_dir, SYSTEM_DESKTOP_ENTRY_DIR};
+use crate::paths::{
+    install_dir_for, staging_dir_for, symlink_name_for, user_bin_dir, user_desktop_entry_dir,
+    SYSTEM_BIN_DIR, SYSTEM_DESKTOP_ENTRY_DIR,
+};
 use crate::privileged;
 use crate::state::{self, InstalledEngine};
 
 async fn refetch_download_url(app: &AppHandle, version: &str) -> Result<String, String> {
     let builds = list_available_ue_linux_builds(app.clone()).await?;
+    // Fab/Bridge companion zips now share the same `version` key as the
+    // engine archive itself (grouped for the UI's collapse/expand extras
+    // section) — pin the refetch to the actual engine zip specifically, or
+    // a mid-download URL-expiry refetch could resume against the wrong file.
     builds
         .into_iter()
-        .find(|b| b.version == version)
+        .find(|b| b.version == version && b.file_name.starts_with("Linux_Unreal_Engine_"))
         .map(|b| b.download_url)
         .ok_or_else(|| format!("version {version} no longer listed on unrealengine.com/linux"))
 }
@@ -76,6 +83,7 @@ pub async fn install_ue(
     let _ = tokio::fs::remove_dir_all(&staging_dir).await;
 
     install_desktop_entry(&app, &version, &dest_dir, system_wide).await?;
+    install_symlink(&app, &version, &dest_dir, system_wide).await?;
 
     state::upsert(InstalledEngine {
         version: version.clone(),
@@ -118,6 +126,7 @@ pub async fn uninstall_ue(app: AppHandle, version: String) -> Result<(), String>
     }
 
     uninstall_desktop_entry(&app, &version, engine.system_wide).await?;
+    uninstall_symlink(&app, &version, engine.system_wide).await?;
     state::remove(&version)?;
     Ok(())
 }
@@ -223,6 +232,46 @@ async fn install_desktop_entry(
             .map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+// Thin PATH-visible launcher (`unrealeditor-<version>`) pointing at the
+// actual engine binary, kept separate from the engine's own data tree per
+// XDG convention: executables in $HOME/.local/bin (or /usr/bin
+// system-wide), data/config in $HOME/.local/share (or /opt).
+async fn install_symlink(
+    app: &AppHandle,
+    version: &str,
+    install_dir: &std::path::Path,
+    system_wide: bool,
+) -> Result<(), String> {
+    let target = crate::paths::engine_binary_path(install_dir);
+    let link_name = symlink_name_for(version);
+
+    if system_wide {
+        let link_path = std::path::Path::new(SYSTEM_BIN_DIR).join(&link_name);
+        privileged::install_symlink_system_wide(app, &target, &link_path)
+    } else {
+        let bin_dir = user_bin_dir()?;
+        tokio::fs::create_dir_all(&bin_dir)
+            .await
+            .map_err(|e| format!("failed to create {}: {e}", bin_dir.display()))?;
+        let link_path = bin_dir.join(&link_name);
+        let _ = tokio::fs::remove_file(&link_path).await;
+        std::os::unix::fs::symlink(&target, &link_path)
+            .map_err(|e| format!("failed to symlink {}: {e}", link_path.display()))
+    }
+}
+
+async fn uninstall_symlink(app: &AppHandle, version: &str, system_wide: bool) -> Result<(), String> {
+    let link_name = symlink_name_for(version);
+    if system_wide {
+        let link_path = std::path::Path::new(SYSTEM_BIN_DIR).join(&link_name);
+        privileged::uninstall_symlink_system_wide(app, &link_path)
+    } else {
+        let link_path = user_bin_dir()?.join(&link_name);
+        let _ = tokio::fs::remove_file(link_path).await;
+        Ok(())
+    }
 }
 
 async fn uninstall_desktop_entry(app: &AppHandle, version: &str, system_wide: bool) -> Result<(), String> {

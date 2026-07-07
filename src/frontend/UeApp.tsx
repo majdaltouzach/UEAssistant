@@ -69,13 +69,47 @@ interface ExtractProgress {
 }
 
 type Progress =
-  | { phase: 'download'; pct: number | null; bytesPerSec: number }
+  | {
+      phase: 'download'
+      pct: number | null
+      downloadedBytes: number
+      totalBytes: number | null
+      bytesPerSec: number
+    }
   | { phase: 'extract'; pct: number; currentFile: string }
 
 function formatBytes(bytes: number): string {
   if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`
   if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`
   return `${(bytes / 1024).toFixed(0)} KB`
+}
+
+interface VersionGroup {
+  version: string
+  builds: UeLinuxBuild[]
+}
+
+function groupByVersion(builds: UeLinuxBuild[]): VersionGroup[] {
+  const order: string[] = []
+  const map = new Map<string, UeLinuxBuild[]>()
+  for (const build of builds) {
+    if (!map.has(build.version)) {
+      order.push(build.version)
+      map.set(build.version, [])
+    }
+    map.get(build.version)!.push(build)
+  }
+  return order.map((version) => ({ version, builds: map.get(version)! }))
+}
+
+// The build actually required to install the engine itself, as opposed to
+// companion archives (symbols, extra source, etc.) that sometimes ship
+// alongside it under the same version.
+function primaryBuild(builds: UeLinuxBuild[]): UeLinuxBuild {
+  return (
+    builds.find((b) => b.file_name === `Linux_Unreal_Engine_${b.version}.zip`) ??
+    builds[0]
+  )
 }
 
 export default function UeApp() {
@@ -86,6 +120,11 @@ export default function UeApp() {
   const [busy, setBusy] = useState<Set<string>>(new Set())
   const [progress, setProgress] = useState<Record<string, Progress>>({})
   const [error, setError] = useState<string | null>(null)
+  // Per-version choice of install location; defaults to user-level (no
+  // admin password needed). Keyed by version, not file_name, since the
+  // choice applies to the whole engine install regardless of which
+  // companion files are grouped under it.
+  const [systemWideChoice, setSystemWideChoice] = useState<Record<string, boolean>>({})
 
   const refreshInstalled = useCallback(() => {
     invoke<InstalledEngine[]>('list_installed_engines')
@@ -126,6 +165,8 @@ export default function UeApp() {
           [version]: {
             phase: 'download',
             pct: total_bytes ? (downloaded_bytes / total_bytes) * 100 : null,
+            downloadedBytes: downloaded_bytes,
+            totalBytes: total_bytes,
             bytesPerSec: bytes_per_sec
           }
         }))
@@ -172,12 +213,13 @@ export default function UeApp() {
   }
 
   const installVersion = (build: UeLinuxBuild) => {
+    const systemWide = systemWideChoice[build.version] ?? false
     setBusy((prev) => new Set(prev).add(build.version))
     setError(null)
     invoke('install_ue', {
       version: build.version,
       downloadUrl: build.download_url,
-      systemWide: false
+      systemWide
     })
       .then(refreshInstalled)
       .catch((e) => setError(String(e)))
@@ -282,45 +324,101 @@ export default function UeApp() {
               </p>
             )}
             <ul className="ue-list">
-              {available?.map((build) => {
-                const p = progress[build.version]
-                return (
-                  <li key={build.version}>
-                    <div>
-                      <strong>{build.version}</strong>
-                      <div className="ue-muted">
-                        {build.size_bytes ? formatBytes(build.size_bytes) : ''}
-                        {build.uploaded ? ` · ${build.uploaded}` : ''}
+              {available &&
+                groupByVersion(available).map(({ version, builds }) => {
+                  const build = primaryBuild(builds)
+                  const extras = builds.filter((b) => b !== build)
+                  const p = progress[version]
+                  const systemWide = systemWideChoice[version] ?? false
+                  return (
+                    <li key={version} className="ue-version-tile">
+                      <div className="ue-version-row">
+                        <div>
+                          <strong>Unreal Engine {version}</strong>
+                          <div className="ue-muted">
+                            {build.size_bytes ? formatBytes(build.size_bytes) : ''}
+                            {build.uploaded ? ` · ${build.uploaded}` : ''}
+                          </div>
+                          {p && (
+                            <div className="ue-progress">
+                              <div
+                                className="ue-progress-bar"
+                                style={{ width: `${p.pct ?? 0}%` }}
+                              />
+                              <span>
+                                {p.phase === 'download'
+                                  ? `Downloading: ${formatBytes(p.downloadedBytes)}` +
+                                    (p.totalBytes ? ` / ${formatBytes(p.totalBytes)}` : '') +
+                                    (p.pct !== null ? ` (${p.pct.toFixed(0)}%)` : '') +
+                                    ` — ${formatBytes(p.bytesPerSec)}/s`
+                                  : `Extracting ${p.pct.toFixed(0)}% — ${p.currentFile}`}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          disabled={busy.has(version) || isInstalled(version)}
+                          onClick={() => installVersion(build)}
+                        >
+                          {isInstalled(version)
+                            ? 'Installed'
+                            : busy.has(version)
+                              ? 'Installing…'
+                              : 'Install'}
+                        </button>
                       </div>
-                      {p && (
-                        <div className="ue-progress">
-                          <div
-                            className="ue-progress-bar"
-                            style={{ width: `${p.pct ?? 0}%` }}
-                          />
-                          <span>
-                            {p.phase === 'download'
-                              ? `Downloading${p.pct !== null ? ` ${p.pct.toFixed(0)}%` : ''} (${formatBytes(p.bytesPerSec)}/s)`
-                              : `Extracting ${p.pct.toFixed(0)}% — ${p.currentFile}`}
-                          </span>
+
+                      {!isInstalled(version) && !busy.has(version) && (
+                        <div className="ue-install-target" role="radiogroup">
+                          <label>
+                            <input
+                              type="radio"
+                              name={`target-${version}`}
+                              checked={!systemWide}
+                              onChange={() =>
+                                setSystemWideChoice((prev) => ({ ...prev, [version]: false }))
+                              }
+                            />
+                            Install for me only (<code>$HOME/.local/share</code>)
+                          </label>
+                          <label>
+                            <input
+                              type="radio"
+                              name={`target-${version}`}
+                              checked={systemWide}
+                              onChange={() =>
+                                setSystemWideChoice((prev) => ({ ...prev, [version]: true }))
+                              }
+                            />
+                            Install for all users (<code>/opt</code>, asks for admin password)
+                          </label>
                         </div>
                       )}
-                    </div>
-                    <button
-                      disabled={
-                        busy.has(build.version) || isInstalled(build.version)
-                      }
-                      onClick={() => installVersion(build)}
-                    >
-                      {isInstalled(build.version)
-                        ? 'Installed'
-                        : busy.has(build.version)
-                          ? 'Installing…'
-                          : 'Install'}
-                    </button>
-                  </li>
-                )
-              })}
+
+                      {extras.length > 0 && (
+                        <details className="ue-extras">
+                          <summary>
+                            {extras.length} additional file{extras.length > 1 ? 's' : ''} for{' '}
+                            {version}
+                          </summary>
+                          <ul className="ue-list ue-extras-list">
+                            {extras.map((extra) => (
+                              <li key={extra.file_name}>
+                                <div>
+                                  <span>{extra.file_name}</span>
+                                  <div className="ue-muted">
+                                    {extra.size_bytes ? formatBytes(extra.size_bytes) : ''}
+                                    {extra.uploaded ? ` · ${extra.uploaded}` : ''}
+                                  </div>
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
+                      )}
+                    </li>
+                  )
+                })}
             </ul>
           </section>
         </>

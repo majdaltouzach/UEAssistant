@@ -75,3 +75,18 @@ pub fn uninstall_desktop_entry_system_wide(
 ) -> Result<(), String> {
     run_pkexec(app, &["uninstall-desktop-entry", &dest_file.to_string_lossy()])
 }
+
+pub fn install_symlink_system_wide(
+    app: &AppHandle,
+    target: &std::path::Path,
+    link_path: &std::path::Path,
+) -> Result<(), String> {
+    run_pkexec(
+        app,
+        &["install-symlink", &target.to_string_lossy(), &link_path.to_string_lossy()],
+    )
+}
+
+pub fn uninstall_symlink_system_wide(app: &AppHandle, link_path: &std::path::Path) -> Result<(), String> {
+    run_pkexec(app, &["uninstall-symlink", &link_path.to_string_lossy()])
+}

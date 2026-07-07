@@ -10,6 +10,8 @@
 #   pkexec-wrapper.sh uninstall <dest_dir>
 #   pkexec-wrapper.sh install-desktop-entry <src_file> <dest_dir>
 #   pkexec-wrapper.sh uninstall-desktop-entry <dest_file>
+#   pkexec-wrapper.sh install-symlink <target> <link_path>
+#   pkexec-wrapper.sh uninstall-symlink <link_path>
 
 set -eu
 
@@ -56,8 +58,25 @@ case "$action" in
     esac
     rm -f "$dest_file"
     ;;
+  install-symlink)
+    target="${2:?missing target}"
+    link_path="${3:?missing link_path}"
+    case "$link_path" in
+      /usr/bin/unrealeditor-*) ;;
+      *) echo "refusing to create symlink outside /usr/bin/unrealeditor-*" >&2; exit 1 ;;
+    esac
+    ln -sf "$target" "$link_path"
+    ;;
+  uninstall-symlink)
+    link_path="${2:?missing link_path}"
+    case "$link_path" in
+      /usr/bin/unrealeditor-*) ;;
+      *) echo "refusing to remove outside /usr/bin/unrealeditor-*" >&2; exit 1 ;;
+    esac
+    rm -f "$link_path"
+    ;;
   *)
-    echo "usage: $0 {install|uninstall|install-desktop-entry|uninstall-desktop-entry} ..." >&2
+    echo "usage: $0 {install|uninstall|install-desktop-entry|uninstall-desktop-entry|install-symlink|uninstall-symlink} ..." >&2
     exit 1
     ;;
 esac

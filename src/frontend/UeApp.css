@@ -116,9 +116,10 @@ h2 {
 
 .ue-progress span {
   display: block;
-  font-size: 12px;
-  color: #a0a0a0;
-  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #e8e8e8;
+  margin-top: 6px;
 }
 
 button {
@@ -146,4 +147,63 @@ button:disabled {
   color: #0a0a0a;
   font-weight: 600;
   padding: 10px 20px;
+}
+
+.ue-list li.ue-version-tile {
+  display: block;
+}
+
+.ue-version-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.ue-install-target {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #2a2d33;
+  font-size: 13px;
+  color: #c0c0c0;
+}
+
+.ue-install-target label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.ue-install-target code {
+  background: #2a2d33;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 12px;
+}
+
+.ue-extras {
+  margin-top: 10px;
+}
+
+.ue-extras summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: #a0a0a0;
+}
+
+.ue-extras summary:hover {
+  color: #e8e8e8;
+}
+
+.ue-extras-list {
+  margin-top: 8px;
+}
+
+.ue-extras-list li {
+  padding: 8px 12px;
+  background: #1a1c20;
 }
