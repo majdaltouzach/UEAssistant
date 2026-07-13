@@ -101,7 +101,9 @@ function clampPct(pct: number): number {
 // anywhere else does. Purely a UI hint shown before the user clicks Install;
 // the backend re-derives this itself from the path rather than trusting it.
 function isOutsideHome(path: string, home: string): boolean {
-  return path !== home && !path.startsWith(home.endsWith('/') ? home : `${home}/`)
+  return (
+    path !== home && !path.startsWith(home.endsWith('/') ? home : `${home}/`)
+  )
 }
 
 interface VersionGroup {
@@ -150,9 +152,7 @@ export default function UeApp() {
   >({})
   const [homeDir, setHomeDir] = useState<string | null>(null)
   const [userDefaultDir, setUserDefaultDir] = useState<string | null>(null)
-  const [systemDefaultDir, setSystemDefaultDir] = useState<string | null>(
-    null
-  )
+  const [systemDefaultDir, setSystemDefaultDir] = useState<string | null>(null)
 
   const resolveInstallPath = useCallback(
     (version: string): string | null => {
@@ -195,7 +195,9 @@ export default function UeApp() {
   useEffect(() => {
     refreshUser()
 
-    invoke<string>('home_dir').then(setHomeDir).catch(() => setHomeDir(null))
+    invoke<string>('home_dir')
+      .then(setHomeDir)
+      .catch(() => setHomeDir(null))
     invoke<string>('default_user_install_dir')
       .then(setUserDefaultDir)
       .catch(() => setUserDefaultDir(null))
@@ -238,9 +240,7 @@ export default function UeApp() {
           ...prev,
           [version]: {
             phase: 'extract',
-            pct: files_total
-              ? clampPct((files_done / files_total) * 100)
-              : 0,
+            pct: files_total ? clampPct((files_done / files_total) * 100) : 0,
             currentFile: current_file
           }
         }))
@@ -417,7 +417,9 @@ export default function UeApp() {
                             <div className="ue-progress">
                               <div className="ue-progress-header">
                                 <span className="ue-progress-pct">
-                                  {p.pct !== null ? `${p.pct.toFixed(0)}%` : '…'}
+                                  {p.pct !== null
+                                    ? `${p.pct.toFixed(0)}%`
+                                    : '…'}
                                 </span>
                                 {p.phase === 'download' && (
                                   <span className="ue-progress-speed">
@@ -470,9 +472,7 @@ export default function UeApp() {
                                 }
                               />
                               Install for me only
-                              {userDefaultDir && (
-                                <code>{userDefaultDir}</code>
-                              )}
+                              {userDefaultDir && <code>{userDefaultDir}</code>}
                             </label>
                             <label>
                               <input
