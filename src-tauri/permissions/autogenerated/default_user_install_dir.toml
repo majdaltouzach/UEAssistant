@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-default-user-install-dir"
+description = "Enables the default_user_install_dir command without any pre-configured scope."
+commands.allow = ["default_user_install_dir"]
+
+[[permission]]
+identifier = "deny-default-user-install-dir"
+description = "Denies the default_user_install_dir command without any pre-configured scope."
+commands.deny = ["default_user_install_dir"]

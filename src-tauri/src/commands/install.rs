@@ -5,11 +5,47 @@ use crate::desktop_entry::{desktop_entry_contents, file_name_for};
 use crate::download::download_resumable;
 use crate::extract::extract_zip_streaming;
 use crate::paths::{
-    install_dir_for, staging_dir_for, symlink_name_for, user_bin_dir, user_desktop_entry_dir,
-    SYSTEM_BIN_DIR, SYSTEM_DESKTOP_ENTRY_DIR,
+    install_dir_for, requires_pkexec, staging_dir_for, symlink_name_for, user_bin_dir,
+    user_desktop_entry_dir, user_engines_root, SYSTEM_BIN_DIR, SYSTEM_DESKTOP_ENTRY_DIR,
+    SYSTEM_WIDE_ROOT,
 };
 use crate::privileged;
 use crate::state::{self, InstalledEngine};
+
+// Lets the frontend pre-fill the "install for me only" / "install for all
+// users" quick options with the exact resolved path (rather than duplicating
+// the XDG-vs-/opt logic in TypeScript), and lets it prefix-check an arbitrary
+// chosen path against $HOME to show a live "needs admin password" hint
+// before the user commits to Install (paths::requires_pkexec is still the
+// authoritative check, run again server-side in install_ue itself).
+#[tauri::command]
+pub fn default_user_install_dir() -> Result<String, String> {
+    Ok(user_engines_root()?.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+pub fn default_system_install_dir() -> String {
+    SYSTEM_WIDE_ROOT.to_string()
+}
+
+#[tauri::command]
+pub fn home_dir() -> Result<String, String> {
+    dirs::home_dir()
+        .map(|p| p.to_string_lossy().into_owned())
+        .ok_or_else(|| "could not resolve home directory".to_string())
+}
+
+// Native folder picker for "install somewhere else". Returns None if the
+// user cancels. Blocking (rfd has no async API on Linux/GTK), but this is a
+// short-lived modal dialog invoked directly from a user click, not on the
+// download/extraction hot path.
+#[tauri::command]
+pub fn pick_install_directory() -> Option<String> {
+    rfd::FileDialog::new()
+        .set_title("Choose Unreal Engine install location")
+        .pick_folder()
+        .map(|p| p.to_string_lossy().into_owned())
+}
 
 async fn refetch_download_url(app: &AppHandle, version: &str) -> Result<String, String> {
     let builds = list_available_ue_linux_builds(app.clone()).await?;
@@ -27,16 +63,21 @@ async fn refetch_download_url(app: &AppHandle, version: &str) -> Result<String, 
 // download -> extract -> place at resolved path -> verify -> record.
 // `download_url` is the presigned S3 URL from list_available_ue_linux_builds
 // (fetched fresh right before this call, per that command's 1hr-expiry
-// note). Runs the actual download/extraction as the current user always;
-// `system_wide` only changes the *final* placement, which goes through the
-// pkexec wrapper.
+// note). Runs the actual download/extraction as the current user always.
+// `install_path` is the user-chosen parent directory (default suggestion or
+// arbitrary, via pick_install_directory) — whether the final placement needs
+// pkexec is derived from it here (anywhere under $HOME: no; anywhere else:
+// yes), never trusted as a client-supplied bool.
 #[tauri::command]
 pub async fn install_ue(
     app: AppHandle,
     version: String,
     download_url: String,
-    system_wide: bool,
+    install_path: String,
 ) -> Result<(), String> {
+    let base_dir = std::path::PathBuf::from(install_path);
+    let system_wide = requires_pkexec(&base_dir)?;
+
     let staging_dir = staging_dir_for(&version)?;
     tokio::fs::create_dir_all(&staging_dir)
         .await
@@ -75,7 +116,7 @@ pub async fn install_ue(
         ));
     }
 
-    let dest_dir = install_dir_for(&version, system_wide)?;
+    let dest_dir = install_dir_for(&version, &base_dir);
     place_engine(&app, &extract_dir, &dest_dir, system_wide).await?;
 
     // Zip no longer needed once successfully extracted and placed.
@@ -106,9 +147,9 @@ pub async fn update_ue(
     app: AppHandle,
     version: String,
     download_url: String,
-    system_wide: bool,
+    install_path: String,
 ) -> Result<(), String> {
-    install_ue(app, version, download_url, system_wide).await
+    install_ue(app, version, download_url, install_path).await
 }
 
 #[tauri::command]

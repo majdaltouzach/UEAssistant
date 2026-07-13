@@ -74,7 +74,7 @@ pub fn open_epic_login_window(app: AppHandle) -> Result<(), String> {
             {
                 let app = app_for_nav.clone();
                 tauri::async_runtime::spawn(async move {
-                    let result = epic_login_blocking(code);
+                    let result = epic_login_blocking(app.clone(), code);
                     let _ = app.emit("epic-login-result", &result);
                     if let Some(w) = app.get_webview_window("epic-login") {
                         let _ = w.close();
@@ -96,13 +96,13 @@ pub fn open_epic_login_window(app: AppHandle) -> Result<(), String> {
     result.map(|_| ()).map_err(|e| format!("failed to open login window: {e}"))
 }
 
-fn epic_login_blocking(code: String) -> Result<UserInfo, String> {
-    epic_login(code)
+fn epic_login_blocking(app: AppHandle, code: String) -> Result<UserInfo, String> {
+    epic_login(app, code)
 }
 
 #[tauri::command]
-pub fn epic_login(code: String) -> Result<UserInfo, String> {
-    let output = Command::new("legendary")
+pub fn epic_login(app: AppHandle, code: String) -> Result<UserInfo, String> {
+    let output = Command::new(crate::paths::legendary_bin_path(&app)?)
         .args(["auth", "--code", &code])
         .output()
         .map_err(|e| format!("failed to run legendary: {e}"))?;
@@ -116,8 +116,8 @@ pub fn epic_login(code: String) -> Result<UserInfo, String> {
 }
 
 #[tauri::command]
-pub fn epic_logout() -> Result<(), String> {
-    let output = Command::new("legendary")
+pub fn epic_logout(app: AppHandle) -> Result<(), String> {
+    let output = Command::new(crate::paths::legendary_bin_path(&app)?)
         .args(["auth", "--delete"])
         .output()
         .map_err(|e| format!("failed to run legendary: {e}"))?;

@@ -281,8 +281,8 @@ fn urlencoding_decode(s: &str) -> String {
 // returns UE_4.0..UE_5.8, title "Unreal Engine", standard app_names —
 // no vault/entitlement special-casing needed on install.
 #[tauri::command]
-pub fn list_ue_versions() -> Result<Vec<UeVersion>, String> {
-    let output = Command::new("legendary")
+pub fn list_ue_versions(app: AppHandle) -> Result<Vec<UeVersion>, String> {
+    let output = Command::new(crate::paths::legendary_bin_path(&app)?)
         .args(["list", "--include-ue", "--csv"])
         .output()
         .map_err(|e| format!("failed to run legendary: {e}"))?;

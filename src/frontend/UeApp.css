@@ -98,10 +98,36 @@ h2 {
 }
 
 .ue-progress {
-  position: relative;
   margin-top: 6px;
-  height: 6px;
   width: 260px;
+}
+
+.ue-progress-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ue-progress-pct {
+  font-size: 15px;
+  font-weight: 700;
+  color: #e8e8e8;
+  font-variant-numeric: tabular-nums;
+}
+
+.ue-progress-speed {
+  font-size: 12px;
+  font-weight: 600;
+  color: #4a9eff;
+  font-variant-numeric: tabular-nums;
+}
+
+.ue-progress-track {
+  position: relative;
+  margin-top: 4px;
+  height: 6px;
+  width: 100%;
   background: #2a2d33;
   border-radius: 4px;
   overflow: hidden;
@@ -114,12 +140,11 @@ h2 {
   transition: width 0.3s ease;
 }
 
-.ue-progress span {
+.ue-progress-detail {
   display: block;
-  font-size: 13px;
-  font-weight: 600;
-  color: #e8e8e8;
-  margin-top: 6px;
+  font-size: 12px;
+  color: #a0a0a0;
+  margin-top: 4px;
 }
 
 button {
@@ -182,6 +207,18 @@ button:disabled {
   background: #2a2d33;
   border-radius: 4px;
   padding: 1px 5px;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.ue-install-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #8a8a8a;
+}
+
+.ue-browse-btn {
+  padding: 2px 8px;
   font-size: 12px;
 }
 

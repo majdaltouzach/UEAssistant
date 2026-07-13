@@ -21,6 +21,7 @@ tokio = { version = "1", features = ["fs", "io-util", "rt", "sync", "macros"] }
 futures-util = "0.3"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 regex = "1"
+rfd = { version = "0.15", default-features = false, features = ["gtk3"] }
 
 [[bin]]
 name = "ueassistant"

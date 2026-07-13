@@ -27,6 +27,6 @@
     "active": true,
     "targets": ["deb", "appimage", "rpm"],
     "icon": ["../public/icon.png"],
-    "resources": ["pkexec-wrapper.sh"]
+    "resources": ["pkexec-wrapper.sh", "../public/bin"]
   }
 }

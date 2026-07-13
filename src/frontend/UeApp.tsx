@@ -78,10 +78,30 @@ type Progress =
     }
   | { phase: 'extract'; pct: number; currentFile: string }
 
+// Where to install a given version: the two quick defaults (resolved by the
+// backend — see default_user_install_dir/default_system_install_dir in
+// src-tauri/src/commands/install.rs, which stay the single source of truth
+// for the actual paths), or an arbitrary directory via the native picker.
+type InstallTarget =
+  | { kind: 'user' }
+  | { kind: 'system' }
+  | { kind: 'custom'; path: string }
+
 function formatBytes(bytes: number): string {
   if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`
   if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`
   return `${(bytes / 1024).toFixed(0)} KB`
+}
+
+function clampPct(pct: number): number {
+  return Math.min(100, Math.max(0, pct))
+}
+
+// Mirrors paths::requires_pkexec — anywhere under $HOME needs no elevation,
+// anywhere else does. Purely a UI hint shown before the user clicks Install;
+// the backend re-derives this itself from the path rather than trusting it.
+function isOutsideHome(path: string, home: string): boolean {
+  return path !== home && !path.startsWith(home.endsWith('/') ? home : `${home}/`)
 }
 
 interface VersionGroup {
@@ -125,9 +145,37 @@ export default function UeApp() {
   // admin password needed). Keyed by version, not file_name, since the
   // choice applies to the whole engine install regardless of which
   // companion files are grouped under it.
-  const [systemWideChoice, setSystemWideChoice] = useState<
-    Record<string, boolean>
+  const [installTarget, setInstallTarget] = useState<
+    Record<string, InstallTarget>
   >({})
+  const [homeDir, setHomeDir] = useState<string | null>(null)
+  const [userDefaultDir, setUserDefaultDir] = useState<string | null>(null)
+  const [systemDefaultDir, setSystemDefaultDir] = useState<string | null>(
+    null
+  )
+
+  const resolveInstallPath = useCallback(
+    (version: string): string | null => {
+      const target = installTarget[version] ?? { kind: 'user' }
+      if (target.kind === 'user') return userDefaultDir
+      if (target.kind === 'system') return systemDefaultDir
+      return target.path
+    },
+    [installTarget, userDefaultDir, systemDefaultDir]
+  )
+
+  const browseInstallLocation = (version: string) => {
+    invoke<string | null>('pick_install_directory')
+      .then((path) => {
+        if (path) {
+          setInstallTarget((prev) => ({
+            ...prev,
+            [version]: { kind: 'custom', path }
+          }))
+        }
+      })
+      .catch((e) => setError(String(e)))
+  }
 
   const refreshInstalled = useCallback(() => {
     invoke<InstalledEngine[]>('list_installed_engines')
@@ -146,6 +194,14 @@ export default function UeApp() {
 
   useEffect(() => {
     refreshUser()
+
+    invoke<string>('home_dir').then(setHomeDir).catch(() => setHomeDir(null))
+    invoke<string>('default_user_install_dir')
+      .then(setUserDefaultDir)
+      .catch(() => setUserDefaultDir(null))
+    invoke<string>('default_system_install_dir')
+      .then(setSystemDefaultDir)
+      .catch(() => setSystemDefaultDir(null))
 
     const unlistenPromises = [
       tauri().event.listen<{ Ok?: UserInfo; Err?: string }>(
@@ -167,7 +223,9 @@ export default function UeApp() {
           ...prev,
           [version]: {
             phase: 'download',
-            pct: total_bytes ? (downloaded_bytes / total_bytes) * 100 : null,
+            pct: total_bytes
+              ? clampPct((downloaded_bytes / total_bytes) * 100)
+              : null,
             downloadedBytes: downloaded_bytes,
             totalBytes: total_bytes,
             bytesPerSec: bytes_per_sec
@@ -180,7 +238,9 @@ export default function UeApp() {
           ...prev,
           [version]: {
             phase: 'extract',
-            pct: files_total ? (files_done / files_total) * 100 : 0,
+            pct: files_total
+              ? clampPct((files_done / files_total) * 100)
+              : 0,
             currentFile: current_file
           }
         }))
@@ -216,13 +276,17 @@ export default function UeApp() {
   }
 
   const installVersion = (build: UeLinuxBuild) => {
-    const systemWide = systemWideChoice[build.version] ?? false
+    const installPath = resolveInstallPath(build.version)
+    if (!installPath) {
+      setError('Install location is not ready yet — try again in a moment.')
+      return
+    }
     setBusy((prev) => new Set(prev).add(build.version))
     setError(null)
     invoke('install_ue', {
       version: build.version,
       downloadUrl: build.download_url,
-      systemWide
+      installPath
     })
       .then(refreshInstalled)
       .catch((e) => setError(String(e)))
@@ -332,7 +396,12 @@ export default function UeApp() {
                   const build = primaryBuild(builds)
                   const extras = builds.filter((b) => b !== build)
                   const p = progress[version]
-                  const systemWide = systemWideChoice[version] ?? false
+                  const target = installTarget[version] ?? { kind: 'user' }
+                  const resolvedPath = resolveInstallPath(version)
+                  const needsAdmin =
+                    resolvedPath !== null &&
+                    homeDir !== null &&
+                    isOutsideHome(resolvedPath, homeDir)
                   return (
                     <li key={version} className="ue-version-tile">
                       <div className="ue-version-row">
@@ -346,21 +415,29 @@ export default function UeApp() {
                           </div>
                           {p && (
                             <div className="ue-progress">
-                              <div
-                                className="ue-progress-bar"
-                                style={{ width: `${p.pct ?? 0}%` }}
-                              />
-                              <span>
+                              <div className="ue-progress-header">
+                                <span className="ue-progress-pct">
+                                  {p.pct !== null ? `${p.pct.toFixed(0)}%` : '…'}
+                                </span>
+                                {p.phase === 'download' && (
+                                  <span className="ue-progress-speed">
+                                    {formatBytes(p.bytesPerSec)}/s
+                                  </span>
+                                )}
+                              </div>
+                              <div className="ue-progress-track">
+                                <div
+                                  className="ue-progress-bar"
+                                  style={{ width: `${p.pct ?? 0}%` }}
+                                />
+                              </div>
+                              <span className="ue-progress-detail">
                                 {p.phase === 'download'
-                                  ? `Downloading: ${formatBytes(p.downloadedBytes)}` +
+                                  ? `Downloading ${formatBytes(p.downloadedBytes)}` +
                                     (p.totalBytes
                                       ? ` / ${formatBytes(p.totalBytes)}`
-                                      : '') +
-                                    (p.pct !== null
-                                      ? ` (${p.pct.toFixed(0)}%)`
-                                      : '') +
-                                    ` — ${formatBytes(p.bytesPerSec)}/s`
-                                  : `Extracting ${p.pct.toFixed(0)}% — ${p.currentFile}`}
+                                      : ' (size unknown)')
+                                  : `Extracting — ${p.currentFile}`}
                               </span>
                             </div>
                           )}
@@ -378,37 +455,72 @@ export default function UeApp() {
                       </div>
 
                       {!isInstalled(version) && !busy.has(version) && (
-                        <div className="ue-install-target" role="radiogroup">
-                          <label>
-                            <input
-                              type="radio"
-                              name={`target-${version}`}
-                              checked={!systemWide}
-                              onChange={() =>
-                                setSystemWideChoice((prev) => ({
-                                  ...prev,
-                                  [version]: false
-                                }))
-                              }
-                            />
-                            Install for me only (<code>$HOME/.local/share</code>
-                            )
-                          </label>
-                          <label>
-                            <input
-                              type="radio"
-                              name={`target-${version}`}
-                              checked={systemWide}
-                              onChange={() =>
-                                setSystemWideChoice((prev) => ({
-                                  ...prev,
-                                  [version]: true
-                                }))
-                              }
-                            />
-                            Install for all users (<code>/opt</code>, asks for
-                            admin password)
-                          </label>
+                        <div className="ue-install-target">
+                          <div role="radiogroup">
+                            <label>
+                              <input
+                                type="radio"
+                                name={`target-${version}`}
+                                checked={target.kind === 'user'}
+                                onChange={() =>
+                                  setInstallTarget((prev) => ({
+                                    ...prev,
+                                    [version]: { kind: 'user' }
+                                  }))
+                                }
+                              />
+                              Install for me only
+                              {userDefaultDir && (
+                                <code>{userDefaultDir}</code>
+                              )}
+                            </label>
+                            <label>
+                              <input
+                                type="radio"
+                                name={`target-${version}`}
+                                checked={target.kind === 'system'}
+                                onChange={() =>
+                                  setInstallTarget((prev) => ({
+                                    ...prev,
+                                    [version]: { kind: 'system' }
+                                  }))
+                                }
+                              />
+                              Install for all users
+                              {systemDefaultDir && (
+                                <code>{systemDefaultDir}</code>
+                              )}
+                            </label>
+                            <label>
+                              <input
+                                type="radio"
+                                name={`target-${version}`}
+                                checked={target.kind === 'custom'}
+                                onChange={() => browseInstallLocation(version)}
+                              />
+                              Choose location…
+                              {target.kind === 'custom' && (
+                                <code>{target.path}</code>
+                              )}
+                              <button
+                                type="button"
+                                className="ue-browse-btn"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  browseInstallLocation(version)
+                                }}
+                              >
+                                Browse…
+                              </button>
+                            </label>
+                          </div>
+                          {resolvedPath && (
+                            <div className="ue-install-hint">
+                              {needsAdmin
+                                ? `Outside your home folder — will ask for your admin password.`
+                                : `Inside your home folder — no admin password needed.`}
+                            </div>
+                          )}
                         </div>
                       )}
 

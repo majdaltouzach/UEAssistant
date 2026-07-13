@@ -12,6 +12,10 @@ fn main() {
             "update_ue",
             "uninstall_ue",
             "list_installed_engines",
+            "default_user_install_dir",
+            "default_system_install_dir",
+            "home_dir",
+            "pick_install_directory",
         ]),
     );
     tauri_build::try_build(attributes).expect("tauri build script failed");
