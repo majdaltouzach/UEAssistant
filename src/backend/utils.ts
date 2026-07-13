@@ -384,7 +384,12 @@ export function createNecessaryFolders() {
     darwin: [...defaultFolders, toolsPath]
   }
 
-  necessaryFoldersByPlatform[process.platform].forEach((folder: string) => {
+  const foldersForPlatform =
+    necessaryFoldersByPlatform[
+      process.platform as keyof typeof necessaryFoldersByPlatform
+    ] ?? defaultFolders
+
+  foldersForPlatform.forEach((folder: string) => {
     if (!existsSync(folder)) {
       mkdirSync(folder)
     }
@@ -451,11 +456,9 @@ function constructAndUpdateRPC(gameInfo: GameInfo): RpcClient {
 
   client.on('ready', async () => {
     await client.user?.setActivity({
-      name: title,
       type: 0,
       startTimestamp: Date.now(),
       state: 'via Heroic on ' + getFormattedOsName(),
-      statusDisplayType: 0, // Use game title for name plate
       ...overrides
     })
   })
@@ -1071,7 +1074,7 @@ export async function downloadFile({
   const connections = 5
   try {
     const response = await axiosClient.head(url)
-    fileSize = parseInt(response.headers['content-length'], 10)
+    fileSize = parseInt(String(response.headers['content-length']), 10)
   } catch (err) {
     if (!ignoreFailure) {
       logError(
