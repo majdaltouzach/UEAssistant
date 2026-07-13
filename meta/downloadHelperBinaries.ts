@@ -8,11 +8,7 @@ import { setGlobalDispatcher, ProxyAgent } from 'undici'
 
 type SupportedPlatform = 'win32' | 'darwin' | 'linux'
 type DownloadedBinary =
-  | 'legendary'
-  | 'gogdl'
-  | 'nile'
-  | 'comet'
-  | 'epic-integration'
+  'legendary' | 'gogdl' | 'nile' | 'comet' | 'epic-integration'
 
 const RELEASE_TAGS = {
   legendary: '0.20.43',
