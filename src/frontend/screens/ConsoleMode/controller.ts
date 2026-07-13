@@ -1,5 +1,9 @@
 export type ControllerLayout =
-  'ps4' | 'ps5' | 'xbox' | 'nintendo' | 'steam-deck'
+  | 'ps4'
+  | 'ps5'
+  | 'xbox'
+  | 'nintendo'
+  | 'steam-deck'
 
 // Standard gamepad button indices (Chromium "standard" mapping).
 export const BTN_ACTION = 0

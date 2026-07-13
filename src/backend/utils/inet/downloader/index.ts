@@ -28,7 +28,9 @@ type TextDownloadOptions = CommonDownloadOptions<'text'>
 type ArrayBufferDownloadOptions = CommonDownloadOptions<'arraybuffer'>
 type JsonDownloadOptions = CommonDownloadOptions<undefined | 'json'>
 type DownloadOptions =
-  TextDownloadOptions | ArrayBufferDownloadOptions | JsonDownloadOptions
+  | TextDownloadOptions
+  | ArrayBufferDownloadOptions
+  | JsonDownloadOptions
 
 async function downloadFile(
   url: string,

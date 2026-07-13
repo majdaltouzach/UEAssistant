@@ -4,7 +4,11 @@ import { LaunchOption } from 'common/types'
 
 // Possible platforms for `legendary list --platform`
 export type LegendaryInstallPlatform =
-  'Windows' | 'Win32' | 'Mac' | 'Android' | 'iOS'
+  | 'Windows'
+  | 'Win32'
+  | 'Mac'
+  | 'Android'
+  | 'iOS'
 
 // Metadata in `~/.config/legendary/installed.json`
 export interface InstalledJsonMetadata {

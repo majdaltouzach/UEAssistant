@@ -28,7 +28,9 @@ export type LaunchParams = {
 }
 
 export type LaunchOption =
-  BaseLaunchOption | AltExeLaunchOption | DLCLaunchOption
+  | BaseLaunchOption
+  | AltExeLaunchOption
+  | DLCLaunchOption
 
 // Option to append extra parameters to the launch command
 interface BaseLaunchOption {
@@ -109,7 +111,10 @@ export interface AppSettings extends GameSettings {
 }
 
 export type LibraryTopSectionOptions =
-  'disabled' | 'recently_played' | 'recently_played_installed' | 'favourites'
+  | 'disabled'
+  | 'recently_played'
+  | 'recently_played_installed'
+  | 'favourites'
 
 export type ExecResult = {
   stderr: string
@@ -366,7 +371,8 @@ export type GamepadActionStatus = Record<
 export type ValidGamepadAction = GamepadActionArgs['action']
 
 export type GamepadActionArgs =
-  GamepadActionArgsWithMetadata | GamepadActionArgsWithoutMetadata
+  | GamepadActionArgsWithMetadata
+  | GamepadActionArgsWithoutMetadata
 
 interface GamepadActionArgsWithMetadata {
   action: 'leftClick' | 'rightClick'
