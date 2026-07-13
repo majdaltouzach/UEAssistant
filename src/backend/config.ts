@@ -236,7 +236,7 @@ class GlobalConfigV0 extends GlobalConfig {
     return {
       ...this.getFactoryDefaults(),
       ...defaultSettings
-    } as AppSettings
+    }
   }
 
   public getFactoryDefaults(): AppSettings {

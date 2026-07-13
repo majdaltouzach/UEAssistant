@@ -85,7 +85,7 @@ async function downloadGithubAssets(
     async ([arch, platformFilenameMap]) =>
       Promise.all(
         Object.entries(platformFilenameMap).map(([platform, filename]) => {
-          if (!filename) return
+          if (!filename) return Promise.resolve()
           return downloadAsset(
             binaryName,
             repo,

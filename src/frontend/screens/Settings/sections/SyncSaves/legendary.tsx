@@ -9,7 +9,6 @@ import {
   ToggleSwitch
 } from 'frontend/components/UI'
 import { syncSaves } from 'frontend/helpers'
-import { SyncType } from 'frontend/types'
 import { ProgressDialog } from 'frontend/components/UI/ProgressDialog'
 import SettingsContext from '../../SettingsContext'
 import TextWithProgress from 'frontend/components/UI/TextWithProgress'
@@ -144,7 +143,7 @@ export default function LegendarySyncSaves({
           <SelectField
             label={t('setting.manualsync.title')}
             htmlId="selectSyncType"
-            onChange={(event) => setSyncType(event.target.value as SyncType)}
+            onChange={(event) => setSyncType(event.target.value)}
             value={syncType}
             disabled={!savesPath.length}
             extraClass="rightButtons"
