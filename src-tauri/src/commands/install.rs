@@ -36,15 +36,23 @@ pub fn home_dir() -> Result<String, String> {
 }
 
 // Native folder picker for "install somewhere else". Returns None if the
-// user cancels. Blocking (rfd has no async API on Linux/GTK), but this is a
-// short-lived modal dialog invoked directly from a user click, not on the
-// download/extraction hot path.
+// user cancels. rfd's gtk3 backend on Linux must run on the thread GTK was
+// initialized on (the app main thread) or the whole GTK main loop locks up —
+// Tauri commands run on a worker thread, so the dialog is bounced onto the
+// main thread via run_on_main_thread and the result piped back over a
+// channel.
 #[tauri::command]
-pub fn pick_install_directory() -> Option<String> {
-    rfd::FileDialog::new()
-        .set_title("Choose Unreal Engine install location")
-        .pick_folder()
-        .map(|p| p.to_string_lossy().into_owned())
+pub fn pick_install_directory(app: AppHandle) -> Option<String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    app.run_on_main_thread(move || {
+        let picked = rfd::FileDialog::new()
+            .set_title("Choose Unreal Engine install location")
+            .pick_folder()
+            .map(|p| p.to_string_lossy().into_owned());
+        let _ = tx.send(picked);
+    })
+    .ok()?;
+    rx.recv().ok().flatten()
 }
 
 async fn refetch_download_url(app: &AppHandle, version: &str) -> Result<String, String> {
