@@ -10,7 +10,7 @@ body {
 }
 
 .ue-app {
-  max-width: 720px;
+  max-width: 960px;
   margin: 0 auto;
   padding: 24px;
 }
@@ -243,4 +243,125 @@ button:disabled {
 .ue-extras-list li {
   padding: 8px 12px;
   background: #1a1c20;
+}
+
+/* Unity Hub-style shell: a narrow left rail ("Installs" / "Install Editor")
+   next to the main content pane, instead of one stacked page. */
+.ue-shell {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.ue-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 160px;
+  flex-shrink: 0;
+}
+
+.ue-nav-item {
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 14px;
+  color: #a0a0a0;
+}
+
+.ue-nav-item:hover:not(:disabled) {
+  background: #1e2126;
+  color: #e8e8e8;
+}
+
+.ue-nav-item.active {
+  background: #22262c;
+  color: #e8e8e8;
+  font-weight: 600;
+  box-shadow: inset 3px 0 0 #4a9eff;
+}
+
+.ue-content {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Installs tab: horizontal engine cards, closer to Unity Hub's Installs
+   list than the plain flex rows used for the Install Editor tab. */
+.ue-card-list li.ue-engine-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px;
+}
+
+.ue-engine-card-icon {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: #22262c;
+  color: #6fb1ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.ue-engine-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.ue-engine-card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ue-chip {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  background: #2a2d33;
+  color: #a0a0a0;
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.ue-chip-update {
+  background: #1f3a2a;
+  color: #7ee0a0;
+}
+
+.ue-engine-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+  align-items: flex-end;
+}
+
+.ue-confirm-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #c0c0c0;
+  white-space: nowrap;
+}
+
+.ue-danger {
+  background: #5a2323;
+  border-color: #8a3a3a;
+  color: #ffb3b3;
+}
+
+.ue-danger:hover:not(:disabled) {
+  background: #6e2b2b;
 }

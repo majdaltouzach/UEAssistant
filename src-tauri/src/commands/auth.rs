@@ -74,7 +74,12 @@ pub fn open_epic_login_window(app: AppHandle) -> Result<(), String> {
             {
                 let app = app_for_nav.clone();
                 tauri::async_runtime::spawn(async move {
-                    let result = epic_login_blocking(app.clone(), code);
+                    let app_for_blocking = app.clone();
+                    let result = tauri::async_runtime::spawn_blocking(move || {
+                        epic_login_blocking(app_for_blocking, code)
+                    })
+                    .await
+                    .unwrap_or_else(|e| Err(format!("login task panicked: {e}")));
                     let _ = app.emit("epic-login-result", &result);
                     if let Some(w) = app.get_webview_window("epic-login") {
                         let _ = w.close();

@@ -77,6 +77,35 @@ pub async fn download_resumable(
             continue;
         }
 
+        // A file left fully downloaded in staging by a prior attempt that
+        // failed during extraction/placement (zip only gets removed after a
+        // *successful* extract+place) makes our Range request start past
+        // EOF on retry — the server correctly answers 416. That's not a
+        // failure, it means there's nothing left to download.
+        if response.status() == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
+            let total_from_range = response
+                .headers()
+                .get(reqwest::header::CONTENT_RANGE)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.rsplit('/').next())
+                .and_then(|v| v.parse::<u64>().ok());
+            if total_from_range.is_none_or(|total| total == already_have) {
+                let _ = app.emit(
+                    "ue-download-progress",
+                    DownloadProgress {
+                        version: version.to_string(),
+                        downloaded_bytes: already_have,
+                        total_bytes: total_from_range,
+                        bytes_per_sec: 0,
+                    },
+                );
+                return Ok(());
+            }
+            return Err(format!(
+                "download URL rejected our resume offset ({already_have} bytes) as out of range"
+            ));
+        }
+
         if !response.status().is_success() && response.status() != reqwest::StatusCode::PARTIAL_CONTENT {
             return Err(format!("unexpected download status: {}", response.status()));
         }
@@ -95,6 +124,7 @@ pub async fn download_resumable(
         let mut file = OpenOptions::new()
             .create(true)
             .write(true)
+            .truncate(false)
             .open(dest_path)
             .await
             .map_err(|e| format!("failed to open {}: {e}", dest_path.display()))?;

@@ -87,6 +87,8 @@ type InstallTarget =
   | { kind: 'system' }
   | { kind: 'custom'; path: string }
 
+type View = 'installs' | 'install-editor'
+
 function formatBytes(bytes: number): string {
   if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`
   if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`
@@ -106,6 +108,32 @@ function isOutsideHome(path: string, home: string): boolean {
   )
 }
 
+// Numeric, dot-separated version compare (5.8.0 vs 5.7.4, 5.8 vs 5.8.0, ...).
+// Non-numeric segments compare as 0 rather than throwing, since a handful of
+// legendary/companion-archive version strings aren't strictly numeric.
+function compareVersions(a: string, b: string): number {
+  const pa = a.split('.').map((n) => parseInt(n, 10))
+  const pb = b.split('.').map((n) => parseInt(n, 10))
+  const len = Math.max(pa.length, pb.length)
+  for (let i = 0; i < len; i++) {
+    const na = pa[i] || 0
+    const nb = pb[i] || 0
+    if (na !== nb) return na - nb
+  }
+  return 0
+}
+
+// The install_path recorded for an installed engine is the version-specific
+// directory itself (base_dir/<version> — see install_dir_for in
+// src-tauri/src/paths.rs); updating to a new version needs the *parent* so
+// the new version lands as a sibling directory, side by side with the old
+// one, instead of nested inside it.
+function parentDir(path: string): string {
+  const trimmed = path.endsWith('/') ? path.slice(0, -1) : path
+  const idx = trimmed.lastIndexOf('/')
+  return idx <= 0 ? '/' : trimmed.slice(0, idx)
+}
+
 interface VersionGroup {
   version: string
   builds: UeLinuxBuild[]
@@ -121,7 +149,9 @@ function groupByVersion(builds: UeLinuxBuild[]): VersionGroup[] {
     }
     map.get(build.version)!.push(build)
   }
-  return order.map((version) => ({ version, builds: map.get(version)! }))
+  return order
+    .map((version) => ({ version, builds: map.get(version)! }))
+    .sort((a, b) => compareVersions(b.version, a.version))
 }
 
 // The build actually required to install the engine itself, as opposed to
@@ -137,12 +167,14 @@ function primaryBuild(builds: UeLinuxBuild[]): UeLinuxBuild {
 
 export default function UeApp() {
   const [user, setUser] = useState<UserInfo | null | 'loading'>('loading')
+  const [view, setView] = useState<View>('installs')
   const [installed, setInstalled] = useState<InstalledEngine[]>([])
   const [available, setAvailable] = useState<UeLinuxBuild[] | null>(null)
   const [availableLoading, setAvailableLoading] = useState(false)
   const [busy, setBusy] = useState<Set<string>>(new Set())
   const [progress, setProgress] = useState<Record<string, Progress>>({})
   const [error, setError] = useState<string | null>(null)
+  const [confirmUninstall, setConfirmUninstall] = useState<string | null>(null)
   // Per-version choice of install location; defaults to user-level (no
   // admin password needed). Keyed by version, not file_name, since the
   // choice applies to the whole engine install regardless of which
@@ -275,6 +307,19 @@ export default function UeApp() {
       .finally(() => setAvailableLoading(false))
   }
 
+  const clearProgressAndBusy = (version: string) => {
+    setBusy((prev) => {
+      const next = new Set(prev)
+      next.delete(version)
+      return next
+    })
+    setProgress((prev) => {
+      const rest = { ...prev }
+      delete rest[version]
+      return rest
+    })
+  }
+
   const installVersion = (build: UeLinuxBuild) => {
     const installPath = resolveInstallPath(build.version)
     if (!installPath) {
@@ -290,21 +335,29 @@ export default function UeApp() {
     })
       .then(refreshInstalled)
       .catch((e) => setError(String(e)))
-      .finally(() => {
-        setBusy((prev) => {
-          const next = new Set(prev)
-          next.delete(build.version)
-          return next
-        })
-        setProgress((prev) => {
-          const rest = { ...prev }
-          delete rest[build.version]
-          return rest
-        })
-      })
+      .finally(() => clearProgressAndBusy(build.version))
+  }
+
+  // Updating installs the new version as a sibling of the existing one
+  // (same parent directory the old version lives under) rather than
+  // replacing it in place — old and new stay side by side until the user
+  // removes the old one themselves, same as Unity Hub.
+  const updateVersion = (engine: InstalledEngine, build: UeLinuxBuild) => {
+    const installPath = parentDir(engine.install_path)
+    setBusy((prev) => new Set(prev).add(build.version))
+    setError(null)
+    invoke('update_ue', {
+      version: build.version,
+      downloadUrl: build.download_url,
+      installPath
+    })
+      .then(refreshInstalled)
+      .catch((e) => setError(String(e)))
+      .finally(() => clearProgressAndBusy(build.version))
   }
 
   const uninstallVersion = (version: string) => {
+    setConfirmUninstall(null)
     setBusy((prev) => new Set(prev).add(version))
     setError(null)
     invoke('uninstall_ue', { version })
@@ -321,6 +374,17 @@ export default function UeApp() {
 
   const isInstalled = (version: string) =>
     installed.some((e) => e.version === version)
+
+  // Newest available build whose version is strictly newer than the
+  // installed one, or null if the engine is already current (or the
+  // available-builds listing hasn't been fetched this session yet).
+  const latestUpdateFor = (engine: InstalledEngine): UeLinuxBuild | null => {
+    if (!available) return null
+    const newer = groupByVersion(available)
+      .filter((g) => compareVersions(g.version, engine.version) > 0)
+      .map((g) => primaryBuild(g.builds))
+    return newer[0] ?? null
+  }
 
   return (
     <div className="ue-app">
@@ -353,67 +417,69 @@ export default function UeApp() {
       )}
 
       {user && user !== 'loading' && (
-        <>
-          <section>
-            <h2>Installed engines</h2>
-            {installed.length === 0 && (
-              <p className="ue-muted">None installed yet.</p>
-            )}
-            <ul className="ue-list">
-              {installed.map((engine) => (
-                <li key={engine.version}>
-                  <div>
-                    <strong>{engine.version}</strong>
-                    <div className="ue-muted">{engine.install_path}</div>
-                  </div>
-                  <button
-                    disabled={busy.has(engine.version)}
-                    onClick={() => uninstallVersion(engine.version)}
-                  >
-                    {busy.has(engine.version) ? 'Working…' : 'Uninstall'}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
+        <div className="ue-shell">
+          <nav className="ue-sidebar">
+            <button
+              className={
+                view === 'installs' ? 'ue-nav-item active' : 'ue-nav-item'
+              }
+              onClick={() => setView('installs')}
+            >
+              Installs
+            </button>
+            <button
+              className={
+                view === 'install-editor' ? 'ue-nav-item active' : 'ue-nav-item'
+              }
+              onClick={() => setView('install-editor')}
+            >
+              Install Editor
+            </button>
+          </nav>
 
-          <section>
-            <div className="ue-section-header">
-              <h2>Available Unreal Engine builds (Linux)</h2>
-              <button onClick={refreshAvailable} disabled={availableLoading}>
-                {availableLoading ? 'Loading…' : 'Refresh'}
-              </button>
-            </div>
-            {available === null && !availableLoading && (
-              <p className="ue-muted">
-                Click Refresh to fetch the current build list from
-                unrealengine.com/linux.
-              </p>
-            )}
-            <ul className="ue-list">
-              {available &&
-                groupByVersion(available).map(({ version, builds }) => {
-                  const build = primaryBuild(builds)
-                  const extras = builds.filter((b) => b !== build)
-                  const p = progress[version]
-                  const target = installTarget[version] ?? { kind: 'user' }
-                  const resolvedPath = resolveInstallPath(version)
-                  const needsAdmin =
-                    resolvedPath !== null &&
-                    homeDir !== null &&
-                    isOutsideHome(resolvedPath, homeDir)
-                  return (
-                    <li key={version} className="ue-version-tile">
-                      <div className="ue-version-row">
-                        <div>
-                          <strong>Unreal Engine {version}</strong>
-                          <div className="ue-muted">
-                            {build.size_bytes
-                              ? formatBytes(build.size_bytes)
-                              : ''}
-                            {build.uploaded ? ` · ${build.uploaded}` : ''}
+          <div className="ue-content">
+            {view === 'installs' && (
+              <section>
+                <div className="ue-section-header">
+                  <h2>Installs</h2>
+                  <button
+                    onClick={refreshAvailable}
+                    disabled={availableLoading}
+                  >
+                    {availableLoading ? 'Checking…' : 'Check for updates'}
+                  </button>
+                </div>
+
+                {installed.length === 0 && (
+                  <p className="ue-muted">
+                    None installed yet. Switch to Install Editor to add one.
+                  </p>
+                )}
+
+                <ul className="ue-list ue-card-list">
+                  {installed.map((engine) => {
+                    const update = latestUpdateFor(engine)
+                    const p = progress[update?.version ?? '']
+                    return (
+                      <li key={engine.version} className="ue-engine-card">
+                        <div className="ue-engine-card-icon" aria-hidden="true">
+                          UE
+                        </div>
+                        <div className="ue-engine-card-body">
+                          <div className="ue-engine-card-title-row">
+                            <strong>{engine.version}</strong>
+                            {engine.system_wide && (
+                              <span className="ue-chip">All users</span>
+                            )}
+                            {update && !busy.has(update.version) && (
+                              <span className="ue-chip ue-chip-update">
+                                Update available: {update.version}
+                              </span>
+                            )}
                           </div>
-                          {p && (
+                          <div className="ue-muted">{engine.install_path}</div>
+
+                          {update && busy.has(update.version) && p && (
                             <div className="ue-progress">
                               <div className="ue-progress-header">
                                 <span className="ue-progress-pct">
@@ -444,117 +510,240 @@ export default function UeApp() {
                             </div>
                           )}
                         </div>
-                        <button
-                          disabled={busy.has(version) || isInstalled(version)}
-                          onClick={() => installVersion(build)}
-                        >
-                          {isInstalled(version)
-                            ? 'Installed'
-                            : busy.has(version)
-                              ? 'Installing…'
-                              : 'Install'}
-                        </button>
-                      </div>
-
-                      {!isInstalled(version) && !busy.has(version) && (
-                        <div className="ue-install-target">
-                          <div role="radiogroup">
-                            <label>
-                              <input
-                                type="radio"
-                                name={`target-${version}`}
-                                checked={target.kind === 'user'}
-                                onChange={() =>
-                                  setInstallTarget((prev) => ({
-                                    ...prev,
-                                    [version]: { kind: 'user' }
-                                  }))
-                                }
-                              />
-                              Install for me only
-                              {userDefaultDir && <code>{userDefaultDir}</code>}
-                            </label>
-                            <label>
-                              <input
-                                type="radio"
-                                name={`target-${version}`}
-                                checked={target.kind === 'system'}
-                                onChange={() =>
-                                  setInstallTarget((prev) => ({
-                                    ...prev,
-                                    [version]: { kind: 'system' }
-                                  }))
-                                }
-                              />
-                              Install for all users
-                              {systemDefaultDir && (
-                                <code>{systemDefaultDir}</code>
-                              )}
-                            </label>
-                            <label>
-                              <input
-                                type="radio"
-                                name={`target-${version}`}
-                                checked={target.kind === 'custom'}
-                                onChange={() => browseInstallLocation(version)}
-                              />
-                              Choose location…
-                              {target.kind === 'custom' && (
-                                <code>{target.path}</code>
-                              )}
+                        <div className="ue-engine-card-actions">
+                          {update && (
+                            <button
+                              disabled={busy.has(update.version)}
+                              onClick={() => updateVersion(engine, update)}
+                            >
+                              {busy.has(update.version)
+                                ? 'Updating…'
+                                : `Update to ${update.version}`}
+                            </button>
+                          )}
+                          {confirmUninstall === engine.version ? (
+                            <div className="ue-confirm-inline">
+                              <span>Remove {engine.version}?</span>
                               <button
-                                type="button"
-                                className="ue-browse-btn"
-                                onClick={(e) => {
-                                  e.preventDefault()
-                                  browseInstallLocation(version)
-                                }}
+                                className="ue-danger"
+                                onClick={() => uninstallVersion(engine.version)}
                               >
-                                Browse…
+                                Confirm
                               </button>
-                            </label>
-                          </div>
-                          {resolvedPath && (
-                            <div className="ue-install-hint">
-                              {needsAdmin
-                                ? `Outside your home folder — will ask for your admin password.`
-                                : `Inside your home folder — no admin password needed.`}
+                              <button onClick={() => setConfirmUninstall(null)}>
+                                Cancel
+                              </button>
                             </div>
+                          ) : (
+                            <button
+                              disabled={busy.has(engine.version)}
+                              onClick={() =>
+                                setConfirmUninstall(engine.version)
+                              }
+                            >
+                              {busy.has(engine.version)
+                                ? 'Working…'
+                                : 'Uninstall'}
+                            </button>
                           )}
                         </div>
-                      )}
+                      </li>
+                    )
+                  })}
+                </ul>
+              </section>
+            )}
 
-                      {extras.length > 0 && (
-                        <details className="ue-extras">
-                          <summary>
-                            {extras.length} additional file
-                            {extras.length > 1 ? 's' : ''} for {version}
-                          </summary>
-                          <ul className="ue-list ue-extras-list">
-                            {extras.map((extra) => (
-                              <li key={extra.file_name}>
-                                <div>
-                                  <span>{extra.file_name}</span>
-                                  <div className="ue-muted">
-                                    {extra.size_bytes
-                                      ? formatBytes(extra.size_bytes)
-                                      : ''}
-                                    {extra.uploaded
-                                      ? ` · ${extra.uploaded}`
-                                      : ''}
+            {view === 'install-editor' && (
+              <section>
+                <div className="ue-section-header">
+                  <h2>Available Unreal Engine builds (Linux)</h2>
+                  <button
+                    onClick={refreshAvailable}
+                    disabled={availableLoading}
+                  >
+                    {availableLoading ? 'Loading…' : 'Refresh'}
+                  </button>
+                </div>
+                {available === null && !availableLoading && (
+                  <p className="ue-muted">
+                    Click Refresh to fetch the current build list from
+                    unrealengine.com/linux.
+                  </p>
+                )}
+                <ul className="ue-list">
+                  {available &&
+                    groupByVersion(available).map(({ version, builds }) => {
+                      const build = primaryBuild(builds)
+                      const extras = builds.filter((b) => b !== build)
+                      const p = progress[version]
+                      const target = installTarget[version] ?? { kind: 'user' }
+                      const resolvedPath = resolveInstallPath(version)
+                      const needsAdmin =
+                        resolvedPath !== null &&
+                        homeDir !== null &&
+                        isOutsideHome(resolvedPath, homeDir)
+                      return (
+                        <li key={version} className="ue-version-tile">
+                          <div className="ue-version-row">
+                            <div>
+                              <strong>Unreal Engine {version}</strong>
+                              <div className="ue-muted">
+                                {build.size_bytes
+                                  ? formatBytes(build.size_bytes)
+                                  : ''}
+                                {build.uploaded ? ` · ${build.uploaded}` : ''}
+                              </div>
+                              {p && (
+                                <div className="ue-progress">
+                                  <div className="ue-progress-header">
+                                    <span className="ue-progress-pct">
+                                      {p.pct !== null
+                                        ? `${p.pct.toFixed(0)}%`
+                                        : '…'}
+                                    </span>
+                                    {p.phase === 'download' && (
+                                      <span className="ue-progress-speed">
+                                        {formatBytes(p.bytesPerSec)}/s
+                                      </span>
+                                    )}
                                   </div>
+                                  <div className="ue-progress-track">
+                                    <div
+                                      className="ue-progress-bar"
+                                      style={{ width: `${p.pct ?? 0}%` }}
+                                    />
+                                  </div>
+                                  <span className="ue-progress-detail">
+                                    {p.phase === 'download'
+                                      ? `Downloading ${formatBytes(p.downloadedBytes)}` +
+                                        (p.totalBytes
+                                          ? ` / ${formatBytes(p.totalBytes)}`
+                                          : ' (size unknown)')
+                                      : `Extracting — ${p.currentFile}`}
+                                  </span>
                                 </div>
-                              </li>
-                            ))}
-                          </ul>
-                        </details>
-                      )}
-                    </li>
-                  )
-                })}
-            </ul>
-          </section>
-        </>
+                              )}
+                            </div>
+                            <button
+                              disabled={
+                                busy.has(version) || isInstalled(version)
+                              }
+                              onClick={() => installVersion(build)}
+                            >
+                              {isInstalled(version)
+                                ? 'Installed'
+                                : busy.has(version)
+                                  ? 'Installing…'
+                                  : 'Install'}
+                            </button>
+                          </div>
+
+                          {!isInstalled(version) && !busy.has(version) && (
+                            <div className="ue-install-target">
+                              <div role="radiogroup">
+                                <label>
+                                  <input
+                                    type="radio"
+                                    name={`target-${version}`}
+                                    checked={target.kind === 'user'}
+                                    onChange={() =>
+                                      setInstallTarget((prev) => ({
+                                        ...prev,
+                                        [version]: { kind: 'user' }
+                                      }))
+                                    }
+                                  />
+                                  Install for me only
+                                  {userDefaultDir && (
+                                    <code>{userDefaultDir}</code>
+                                  )}
+                                </label>
+                                <label>
+                                  <input
+                                    type="radio"
+                                    name={`target-${version}`}
+                                    checked={target.kind === 'system'}
+                                    onChange={() =>
+                                      setInstallTarget((prev) => ({
+                                        ...prev,
+                                        [version]: { kind: 'system' }
+                                      }))
+                                    }
+                                  />
+                                  Install for all users
+                                  {systemDefaultDir && (
+                                    <code>{systemDefaultDir}</code>
+                                  )}
+                                </label>
+                                <label>
+                                  <input
+                                    type="radio"
+                                    name={`target-${version}`}
+                                    checked={target.kind === 'custom'}
+                                    onChange={() =>
+                                      browseInstallLocation(version)
+                                    }
+                                  />
+                                  Choose location…
+                                  {target.kind === 'custom' && (
+                                    <code>{target.path}</code>
+                                  )}
+                                  <button
+                                    type="button"
+                                    className="ue-browse-btn"
+                                    onClick={(e) => {
+                                      e.preventDefault()
+                                      browseInstallLocation(version)
+                                    }}
+                                  >
+                                    Browse…
+                                  </button>
+                                </label>
+                              </div>
+                              {resolvedPath && (
+                                <div className="ue-install-hint">
+                                  {needsAdmin
+                                    ? `Outside your home folder — will ask for your admin password.`
+                                    : `Inside your home folder — no admin password needed.`}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {extras.length > 0 && (
+                            <details className="ue-extras">
+                              <summary>
+                                {extras.length} additional file
+                                {extras.length > 1 ? 's' : ''} for {version}
+                              </summary>
+                              <ul className="ue-list ue-extras-list">
+                                {extras.map((extra) => (
+                                  <li key={extra.file_name}>
+                                    <div>
+                                      <span>{extra.file_name}</span>
+                                      <div className="ue-muted">
+                                        {extra.size_bytes
+                                          ? formatBytes(extra.size_bytes)
+                                          : ''}
+                                        {extra.uploaded
+                                          ? ` · ${extra.uploaded}`
+                                          : ''}
+                                      </div>
+                                    </div>
+                                  </li>
+                                ))}
+                              </ul>
+                            </details>
+                          )}
+                        </li>
+                      )
+                    })}
+                </ul>
+              </section>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )

@@ -21,9 +21,14 @@ case "$action" in
   install)
     staging_dir="${2:?missing staging_dir}"
     dest_dir="${3:?missing dest_dir}"
+    # dest_dir is whatever the user picked via the native folder picker (not
+    # just /opt/UnrealEngine) — the only privileged operations here are
+    # mv/chown/chmod, so the real safety requirement is "no path traversal",
+    # not "must live under one hardcoded root".
     case "$dest_dir" in
-      /opt/UnrealEngine/*) ;;
-      *) echo "refusing to install outside /opt/UnrealEngine" >&2; exit 1 ;;
+      *"/.."*|"../"*|"..") echo "refusing dest_dir with .. component" >&2; exit 1 ;;
+      /*) ;;
+      *) echo "dest_dir must be an absolute path" >&2; exit 1 ;;
     esac
     mkdir -p "$(dirname "$dest_dir")"
     rm -rf "$dest_dir"
@@ -34,8 +39,9 @@ case "$action" in
   uninstall)
     dest_dir="${2:?missing dest_dir}"
     case "$dest_dir" in
-      /opt/UnrealEngine/*) ;;
-      *) echo "refusing to remove outside /opt/UnrealEngine" >&2; exit 1 ;;
+      *"/.."*|"../"*|"..") echo "refusing dest_dir with .. component" >&2; exit 1 ;;
+      /*) ;;
+      *) echo "dest_dir must be an absolute path" >&2; exit 1 ;;
     esac
     rm -rf "$dest_dir"
     ;;

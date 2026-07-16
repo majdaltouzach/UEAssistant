@@ -28,6 +28,14 @@ pub fn extract_zip_streaming(
     let file = File::open(zip_path).map_err(|e| format!("failed to open {}: {e}", zip_path.display()))?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("corrupt zip archive: {e}"))?;
 
+    // A retried install after a previous extraction attempt failed partway
+    // could otherwise leave stale files that aren't part of the current
+    // archive mixed into dest_dir — wipe it first so extraction always
+    // starts from a clean tree.
+    if dest_dir.exists() {
+        std::fs::remove_dir_all(dest_dir)
+            .map_err(|e| format!("failed to clear stale {}: {e}", dest_dir.display()))?;
+    }
     std::fs::create_dir_all(dest_dir)
         .map_err(|e| format!("failed to create {}: {e}", dest_dir.display()))?;
 
